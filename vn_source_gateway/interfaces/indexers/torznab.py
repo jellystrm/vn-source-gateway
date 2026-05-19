@@ -136,7 +136,11 @@ def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[Gate
 
     # ── Per-episode items (sorted by episode first)
     for ep_num in episode_numbers:
-        if kind == "episode" and ep_num is None:
+        # Skip None placeholder ONLY when a season was specified — that case is
+        # already covered by the season-pack block above.
+        # When season is also None (pure title/test search), allow ep_num=None
+        # so at least one result is returned (needed for Sonarr indexer test).
+        if kind == "episode" and ep_num is None and season is not None:
             continue  # season pack handled above; skip the placeholder
         for server_label in server_labels:
             for source_name in source_list:
