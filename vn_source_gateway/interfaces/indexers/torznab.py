@@ -44,7 +44,7 @@ def search_response(settings: Settings, query: dict[str, list[str]]) -> str:
         kind = "TV" if (t == "tvsearch" or tvdb_id) else "Movie"
         # Use the title already resolved inside build_releases (first release has it)
         resolved_title = (releases[0].title if releases else None) or q
-        fallback = (f"TMDB {tmdb_id}" if tmdb_id else "") or (f"TVDB {tvdb_id}" if tvdb_id else "") or "(no query)"
+        fallback = (f"TMDB {tmdb_id}" if tmdb_id else "") or (f"TVDB {tvdb_id}" if tvdb_id else "") or "— (test / RSS)"
         display_title = resolved_title if resolved_title and resolved_title not in {"VN Source"} else fallback
         # Reconstruct the full query URL so the user can inspect results in a browser
         flat = {k: v[0] for k, v in query.items() if v}
