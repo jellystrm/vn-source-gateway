@@ -4,10 +4,10 @@ import threading
 import time
 from typing import Any
 
-from ..config import Settings
-from ..gateway import process_job
-from ..jobs import JobStore
-from ..models import GatewayJob
+from vn_source_gateway.application.grab_service import process_job
+from vn_source_gateway.domain.models import GatewayJob
+from vn_source_gateway.infrastructure.config import Settings
+from vn_source_gateway.infrastructure.jobs import JobStore
 
 
 def torrents_info(settings: Settings) -> list[dict[str, Any]]:

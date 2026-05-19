@@ -7,8 +7,8 @@ from typing import Any
 
 import requests
 
-from .models import EpisodeWanted, MovieWanted, SourceHit
-from .util import normalize_text
+from vn_source_gateway.domain.models import EpisodeWanted, MovieWanted, SourceHit
+from vn_source_gateway.infrastructure.util import normalize_text
 
 log = logging.getLogger(__name__)
 
@@ -182,12 +182,12 @@ def _episode_fields(episode: EpisodeWanted) -> dict[str, object]:
 
 
 def build_sources(template_configs: list[dict[str, Any]]) -> dict[str, Source]:
-    sources: dict[str, Source] = {
-        "kkphim": PhimApiSource("kkphim", "https://phimapi.com"),
-        "ophim": PhimApiSource("ophim", "https://ophim1.com"),
-    }
+    sources: dict[str, Source] = {}
     for config in template_configs:
-        source = DirectHlsTemplateSource(config)
+        if str(config.get("type") or "").lower() == "phimapi":
+            source = PhimApiSource(str(config["name"]), str(config["base_url"]))
+        else:
+            source = DirectHlsTemplateSource(config)
         sources[source.name] = source
     return sources
 

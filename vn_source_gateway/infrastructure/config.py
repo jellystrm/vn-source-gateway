@@ -6,6 +6,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+DEFAULT_SOURCE_CONFIGS: list[dict[str, Any]] = [
+    {"name": "kkphim", "type": "phimapi", "base_url": "https://phimapi.com"},
+    {"name": "ophim", "type": "phimapi", "base_url": "https://ophim1.com"},
+]
+
+
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
@@ -97,6 +103,7 @@ class Settings:
     ffmpeg_extra_args: list[str] = field(default_factory=list)
     log_level: str = "INFO"
     hls_template_sources: list[dict[str, Any]] = field(default_factory=list)
+    resolver_rules: list[dict[str, Any]] = field(default_factory=list)
 
     @staticmethod
     def load() -> "Settings":
@@ -109,7 +116,8 @@ class Settings:
                 file_data = loaded
 
         raw_templates = os.getenv("HLS_TEMPLATE_SOURCES_JSON", "").strip()
-        templates = _file_value(file_data, "hls_template_sources", [])
+        default_sources = DEFAULT_SOURCE_CONFIGS if "hls_template_sources" not in file_data else []
+        templates = _file_value(file_data, "hls_template_sources", default_sources)
         if raw_templates:
             decoded = json.loads(raw_templates)
             if not isinstance(decoded, list):
@@ -117,6 +125,18 @@ class Settings:
             templates = decoded
         if not isinstance(templates, list):
             raise ValueError("hls_template_sources must be a JSON array")
+        source_order = _list_value(file_data, "source_order", "SOURCE_ORDER", ["kkphim", "ophim"])
+        templates = _restore_default_sources_in_order(templates, source_order)
+
+        raw_rules = os.getenv("RESOLVER_RULES_JSON", "").strip()
+        resolver_rules = _file_value(file_data, "resolver_rules", [])
+        if raw_rules:
+            decoded_rules = json.loads(raw_rules)
+            if not isinstance(decoded_rules, list):
+                raise ValueError("RESOLVER_RULES_JSON must be a JSON array")
+            resolver_rules = decoded_rules
+        if not isinstance(resolver_rules, list):
+            raise ValueError("resolver_rules must be a JSON array")
 
         return Settings(
             radarr_url=str(_value(file_data, "radarr_url", "RADARR_URL", "")).rstrip("/"),
@@ -137,7 +157,7 @@ class Settings:
             run_once=_bool_value(file_data, "run_once", "RUN_ONCE", False),
             movie_enabled=_bool_value(file_data, "movie_enabled", "MOVIE_ENABLED", True),
             series_enabled=_bool_value(file_data, "series_enabled", "SERIES_ENABLED", True),
-            source_order=_list_value(file_data, "source_order", "SOURCE_ORDER", ["kkphim", "ophim"]),
+            source_order=source_order,
             default_output_mode=str(_value(file_data, "default_output_mode", "DEFAULT_OUTPUT_MODE", "strm")),
             expose_both_modes=_bool_value(file_data, "expose_both_modes", "EXPOSE_BOTH_MODES", True),
             torznab_api_key=str(_value(file_data, "torznab_api_key", "TORZNAB_API_KEY", "vn-source")),
@@ -153,6 +173,7 @@ class Settings:
             ffmpeg_extra_args=_list_value(file_data, "ffmpeg_extra_args", "FFMPEG_EXTRA_ARGS", []),
             log_level=str(_value(file_data, "log_level", "LOG_LEVEL", "INFO")),
             hls_template_sources=templates,
+            resolver_rules=resolver_rules,
         )
 
     def to_config_dict(self) -> dict[str, Any]:
@@ -189,6 +210,7 @@ class Settings:
             "ffmpeg_extra_args": self.ffmpeg_extra_args,
             "log_level": self.log_level,
             "hls_template_sources": self.hls_template_sources,
+            "resolver_rules": self.resolver_rules,
         }
 
 
@@ -200,3 +222,16 @@ def save_settings(data: dict[str, Any], path: str) -> None:
     with open(tmp_path, "w", encoding="utf-8") as handle:
         json.dump(data, handle, indent=2, sort_keys=True)
     os.replace(tmp_path, path)
+
+
+def _restore_default_sources_in_order(
+    sources: list[dict[str, Any]],
+    source_order: list[str],
+) -> list[dict[str, Any]]:
+    by_name = {str(source.get("name") or ""): source for source in sources if isinstance(source, dict)}
+    restored = [source for source in sources if isinstance(source, dict)]
+    for default_source in DEFAULT_SOURCE_CONFIGS:
+        name = default_source["name"]
+        if name in source_order and name not in by_name:
+            restored.append(default_source.copy())
+    return restored

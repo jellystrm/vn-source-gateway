@@ -4,9 +4,9 @@ import hashlib
 from email.utils import formatdate
 from html import escape as xml_escape
 
-from .config import Settings
-from .gateway import encode_release
-from .models import GatewayRelease, OutputMode
+from vn_source_gateway.application.grab_service import encode_release
+from vn_source_gateway.domain.models import GatewayRelease, OutputMode
+from vn_source_gateway.infrastructure.config import Settings
 
 
 def caps_response() -> str:

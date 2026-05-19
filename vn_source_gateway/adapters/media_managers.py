@@ -5,8 +5,8 @@ from typing import Any
 
 import requests
 
-from .models import EpisodeWanted, MovieWanted
-from .util import as_int
+from vn_source_gateway.domain.models import EpisodeWanted, MovieWanted
+from vn_source_gateway.infrastructure.util import as_int
 
 log = logging.getLogger(__name__)
 

@@ -8,11 +8,12 @@ import threading
 import time
 from dataclasses import asdict, replace
 
-from .config import Settings
-from .jobs import JobStore
-from .models import EpisodeWanted, GatewayJob, GatewayRelease, MovieWanted, SourceHit
-from .output import OutputService
-from .sources import Source, build_sources
+from vn_source_gateway.application.output_service import OutputService
+from vn_source_gateway.application.resolver import SourceResolver
+from vn_source_gateway.domain.models import GatewayJob, GatewayRelease, SourceHit
+from vn_source_gateway.infrastructure.config import Settings
+from vn_source_gateway.infrastructure.jobs import JobStore
+
 
 log = logging.getLogger(__name__)
 
@@ -61,19 +62,7 @@ def process_job(settings: Settings, job_id: str) -> None:
 
 
 def resolve_release(settings: Settings, release: GatewayRelease) -> SourceHit | None:
-    sources = build_sources(settings.hls_template_sources)
-    ordered = [release.source_name] if release.source_name else settings.source_order
-    for source_name in ordered:
-        if not source_name:
-            continue
-        source = sources.get(source_name)
-        if not source:
-            log.warning("Unknown or unconfigured source: %s", source_name)
-            continue
-        hit = _resolve_with_source(source, release)
-        if hit:
-            return hit
-    return None
+    return SourceResolver.from_settings(settings).resolve_release(release)
 
 
 def encode_release(release: GatewayRelease) -> str:
@@ -93,29 +82,3 @@ def decode_release_from_url(url: str) -> GatewayRelease:
         raise ValueError("Unsupported grab URL")
     token = url.split(marker, 1)[1].split("?", 1)[0].strip("/")
     return decode_release(token)
-
-
-def _resolve_with_source(source: Source, release: GatewayRelease) -> SourceHit | None:
-    if release.kind == "movie":
-        return source.resolve_movie(
-            MovieWanted(
-                radarr_id=0,
-                title=release.query or release.title,
-                year=release.year,
-                tmdb_id=release.tmdb_id,
-                imdb_id=release.imdb_id,
-            )
-        )
-    return source.resolve_episode(
-        EpisodeWanted(
-            sonarr_episode_id=0,
-            series_id=0,
-            series_title=release.query or release.title,
-            episode_title="",
-            year=release.year,
-            tvdb_id=release.tvdb_id,
-            imdb_id=release.imdb_id,
-            season_number=release.season_number or 1,
-            episode_number=release.episode_number or 1,
-        )
-    )

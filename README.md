@@ -171,10 +171,20 @@ cd vn-source-gateway
 python3 -m vn_source_gateway --once
 ```
 
-Full gateway smoke test:
+Fake Radarr/Sonarr request test. This starts an isolated gateway on a temporary
+port, performs Torznab movie and TV searches, sends grabs through the
+qBittorrent-compatible API, verifies movie and episode `.strm` output, and
+checks task pause/resume/delete endpoints.
 
 ```bash
 ./scripts/smoke-test.sh
+```
+
+Real Radarr/Sonarr connection test. Start the gateway first, configure
+Radarr/Sonarr URL and API keys in the UI, then run:
+
+```bash
+./scripts/test-arr-connections.sh
 ```
 
 Start the UI locally:

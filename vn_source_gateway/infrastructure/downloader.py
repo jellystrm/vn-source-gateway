@@ -4,7 +4,8 @@ import logging
 import os
 import subprocess
 
-from .models import EpisodeWanted, MovieWanted, SourceHit
+from vn_source_gateway.domain.models import EpisodeWanted, MovieWanted, SourceHit
+
 from .util import safe_filename
 
 log = logging.getLogger(__name__)

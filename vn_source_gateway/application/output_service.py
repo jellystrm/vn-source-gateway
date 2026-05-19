@@ -6,10 +6,10 @@ from dataclasses import replace
 
 import requests
 
-from .config import Settings
-from .downloader import HlsDownloader
-from .models import EpisodeWanted, GatewayJob, MovieWanted, SourceHit
-from .util import safe_filename
+from vn_source_gateway.domain.models import EpisodeWanted, GatewayJob, MovieWanted, SourceHit
+from vn_source_gateway.infrastructure.config import Settings
+from vn_source_gateway.infrastructure.downloader import HlsDownloader
+from vn_source_gateway.infrastructure.util import safe_filename
 
 log = logging.getLogger(__name__)
 

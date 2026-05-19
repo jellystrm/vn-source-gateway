@@ -6,7 +6,7 @@ import time
 from dataclasses import asdict
 from typing import Any
 
-from .models import GatewayJob, GatewayRelease
+from vn_source_gateway.domain.models import GatewayJob, GatewayRelease
 
 
 class JobStore:
