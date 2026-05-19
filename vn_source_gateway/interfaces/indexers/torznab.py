@@ -44,20 +44,22 @@ def search_response(settings: Settings, query: dict[str, list[str]]) -> str:
         kind = "TV" if (t == "tvsearch" or tvdb_id) else "Movie"
         # Use the title already resolved inside build_releases (first release has it)
         resolved_title = (releases[0].title if releases else None) or q
-        fallback = (f"TMDB {tmdb_id}" if tmdb_id else "") or (f"TVDB {tvdb_id}" if tvdb_id else "") or "— (test / RSS)"
+        fallback = (f"TMDB {tmdb_id}" if tmdb_id else "") or (f"TVDB {tvdb_id}" if tvdb_id else "") or ""
         display_title = resolved_title if resolved_title and resolved_title not in {"VN Source"} else fallback
         # Reconstruct the full query URL so the user can inspect results in a browser
         flat = {k: v[0] for k, v in query.items() if v}
         query_url = f"{settings.public_base_url}/torznab/api?{urlencode(flat)}"
-        result_titles = [_release_display_title(r) for r in releases]
-        ActivityLog.get().add(
-            kind="search",
-            title=f"{kind}: {display_title}",
-            detail=f"{len(releases)} result(s) — sources: {', '.join(settings.source_order) or 'none'}",
-            status="ok" if releases else "error",
-            results=result_titles,
-            url=query_url,
-        )
+        # Skip logging test/RSS queries (no real show identifier)
+        if display_title:
+            result_titles = [_release_display_title(r) for r in releases]
+            ActivityLog.get().add(
+                kind="search",
+                title=f"{kind}: {display_title}",
+                detail=f"{len(releases)} result(s) — sources: {', '.join(settings.source_order) or 'none'}",
+                status="ok" if releases else "error",
+                results=result_titles,
+                url=query_url,
+            )
     items = "\n".join(_release_item(settings, release) for release in releases)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
