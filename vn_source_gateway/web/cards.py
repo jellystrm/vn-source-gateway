@@ -18,67 +18,36 @@ def _option(value: str, selected: object) -> str:
     return f'<option value="{_attr(value)}"{selected_attr}>{html.escape(value)}</option>'
 
 
-def radarr_card(config: dict[str, Any]) -> str:
-    return f"""
-    <div class="card" id="radarr">
-      <div class="card-header">
-        <div><div class="card-title">Radarr</div><div class="card-desc">Movie management integration</div></div>
-      </div>
-      <div class="card-body">
-        <div class="row">
-          <div class="field"><label class="field-label">URL</label>
-            <input name="radarr_url" value="{_attr(config["radarr_url"])}" placeholder="http://radarr:7878"></div>
-          <div class="field"><label class="field-label">API Key</label>
-            <input name="radarr_api_key" type="password" value="{_attr(config["radarr_api_key"])}"></div>
-        </div>
-      </div>
-    </div>"""
-
-
-def sonarr_card(config: dict[str, Any]) -> str:
-    return f"""
-    <div class="card" id="sonarr">
-      <div class="card-header">
-        <div><div class="card-title">Sonarr</div><div class="card-desc">Series management integration</div></div>
-      </div>
-      <div class="card-body">
-        <div class="row">
-          <div class="field"><label class="field-label">URL</label>
-            <input name="sonarr_url" value="{_attr(config["sonarr_url"])}" placeholder="http://sonarr:8989"></div>
-          <div class="field"><label class="field-label">API Key</label>
-            <input name="sonarr_api_key" type="password" value="{_attr(config["sonarr_api_key"])}"></div>
-        </div>
-      </div>
-    </div>"""
-
-
 def worker_card(config: dict[str, Any]) -> str:
     return f"""
     <div class="card" id="worker">
       <div class="card-header">
-        <div><div class="card-title">Worker</div><div class="card-desc">Polling and download settings</div></div>
+        <div><div class="card-title">Worker</div>
+        <div class="card-desc">Polling mode — gateway calls Radarr/Sonarr to find missing items and resolves them automatically</div></div>
       </div>
       <div class="card-body">
         <div class="row">
-          <div class="field"><label class="field-label">Download Root</label>
-            <input name="download_root" value="{_attr(config["download_root"])}"></div>
-          <div class="field"><label class="field-label">State Path</label>
-            <input name="state_path" value="{_attr(config["state_path"])}"></div>
-          <div class="field"><label class="field-label">Movie STRM Library Path</label>
-            <input name="movie_strm_root" value="{_attr(config["movie_strm_root"])}"></div>
-          <div class="field"><label class="field-label">Series STRM Library Path</label>
-            <input name="series_strm_root" value="{_attr(config["series_strm_root"])}"></div>
+          <div class="field"><label class="field-label">Radarr URL</label>
+            <input name="radarr_url" value="{_attr(config["radarr_url"])}" placeholder="http://radarr:7878"></div>
+          <div class="field"><label class="field-label">Radarr API Key</label>
+            <input name="radarr_api_key" type="password" value="{_attr(config["radarr_api_key"])}"></div>
+          <div class="field"><label class="field-label">Sonarr URL</label>
+            <input name="sonarr_url" value="{_attr(config["sonarr_url"])}" placeholder="http://sonarr:8989"></div>
+          <div class="field"><label class="field-label">Sonarr API Key</label>
+            <input name="sonarr_api_key" type="password" value="{_attr(config["sonarr_api_key"])}"></div>
           <div class="field"><label class="field-label">Poll Interval (seconds)</label>
             <input name="poll_interval_seconds" type="number" min="10" value="{_attr(config["poll_interval_seconds"])}"></div>
           <div class="field"><label class="field-label">Max Items Per Poll</label>
             <input name="max_items_per_poll" type="number" min="1" value="{_attr(config["max_items_per_poll"])}"></div>
           <div class="field"><label class="field-label">Retry After (seconds)</label>
             <input name="retry_after_seconds" type="number" min="0" value="{_attr(config["retry_after_seconds"])}"></div>
+          <div class="field"><label class="field-label">State Path</label>
+            <input name="state_path" value="{_attr(config["state_path"])}"></div>
         </div>
         <hr class="sep">
         <div class="checks">
-          <label class="check-item"><input type="checkbox" name="movie_enabled" {_checked(config["movie_enabled"])}> Movies</label>
-          <label class="check-item"><input type="checkbox" name="series_enabled" {_checked(config["series_enabled"])}> Series</label>
+          <label class="check-item"><input type="checkbox" name="movie_enabled" {_checked(config["movie_enabled"])}> Poll movies</label>
+          <label class="check-item"><input type="checkbox" name="series_enabled" {_checked(config["series_enabled"])}> Poll series</label>
           <label class="check-item"><input type="checkbox" name="ui_enabled" {_checked(config["ui_enabled"])}> UI Enabled</label>
         </div>
       </div>

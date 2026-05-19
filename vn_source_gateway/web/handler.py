@@ -31,7 +31,7 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
             qs = parse_qs(parsed.query)
 
             if path in {"/", "/index.html"}:
-                self._redirect("/radarr")
+                self._redirect("/worker")
             elif path.lstrip("/") in ALL_SECTIONS:
                 section = path.lstrip("/")
                 msg = "Saved successfully." if "saved" in qs else (

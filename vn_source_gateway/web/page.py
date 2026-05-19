@@ -11,16 +11,12 @@ from .cards import (
     indexer_card,
     jellyfin_card,
     jobs_card,
-    radarr_card,
-    sonarr_card,
     sources_card,
     worker_card,
 )
 from .styles import CSS
 
 _NAV = [
-    ("radarr", "&#9654;", "Radarr"),
-    ("sonarr", "&#9654;", "Sonarr"),
     ("worker", "&#9654;", "Worker"),
     ("sources", "&#9654;", "Sources"),
     ("indexer", "&#9654;", "Indexer"),
@@ -37,9 +33,7 @@ def render_page(settings: Settings, message: str, section: str) -> str:
     templates = json.dumps(config["hls_template_sources"], indent=2)
     source_order = ",".join(config["source_order"])
     ffmpeg_args = ",".join(config["ffmpeg_extra_args"])
-    status = _status(settings)
-    radarr_ok = "ok" if status["radarr"] == "configured" else ""
-    sonarr_ok = "ok" if status["sonarr"] == "configured" else ""
+    worker_ok = "ok" if settings.radarr_url or settings.sonarr_url else ""
     sources_display = html.escape(",".join(settings.source_order) or "none configured")
     msg_html = f'<div class="notice">{html.escape(message)}</div>' if message else ""
 
@@ -76,7 +70,7 @@ def render_page(settings: Settings, message: str, section: str) -> str:
 <body>
 
 <nav class="sidebar">
-  <a class="sidebar-brand" href="/radarr">
+  <a class="sidebar-brand" href="/worker">
     <div class="brand-icon">V</div>
     <div>
       <div class="brand-name">vn-source-gateway</div>
@@ -101,13 +95,9 @@ def render_page(settings: Settings, message: str, section: str) -> str:
   {msg_html}
 
   <div class="status-bar">
-    <div class="pill {radarr_ok}">
-      <span class="dot"></span><span class="pill-label">Radarr</span>
-      <span>{html.escape(status["radarr"])}</span>
-    </div>
-    <div class="pill {sonarr_ok}">
-      <span class="dot"></span><span class="pill-label">Sonarr</span>
-      <span>{html.escape(status["sonarr"])}</span>
+    <div class="pill {worker_ok}">
+      <span class="dot"></span><span class="pill-label">Worker</span>
+      <span>{"configured" if settings.radarr_url or settings.sonarr_url else "not configured"}</span>
     </div>
     <div class="pill">
       <span class="dot"></span><span class="pill-label">Sources</span>
@@ -130,10 +120,6 @@ def _section_card(
     source_order: str,
     ffmpeg_args: str,
 ) -> tuple[str, bool]:
-    if section == "radarr":
-        return radarr_card(config), True
-    if section == "sonarr":
-        return sonarr_card(config), True
     if section == "worker":
         return worker_card(config), True
     if section == "sources":
@@ -146,14 +132,7 @@ def _section_card(
         return jellyfin_card(config), True
     if section == "jobs":
         return jobs_card(_jobs_html(settings)), False
-    return radarr_card(config), True
-
-
-def _status(settings: Settings) -> dict[str, str]:
-    return {
-        "radarr": "configured" if settings.radarr_url and settings.radarr_api_key else "missing config",
-        "sonarr": "configured" if settings.sonarr_url and settings.sonarr_api_key else "missing config",
-    }
+    return worker_card(config), True
 
 
 def _jobs_html(settings: Settings) -> str:
