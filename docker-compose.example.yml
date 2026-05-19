@@ -15,9 +15,11 @@ services:
       SERIES_STRM_ROOT: /shows
       DOWNLOAD_CONTAINER: mkv
       POLL_INTERVAL_SECONDS: "300"
-      SOURCE_ORDER: kkphim,ophim
       LOG_LEVEL: INFO
       UI_PORT: "8765"
+      # Required for TV series resolution via Torznab (TVDB → TMDB ID lookup).
+      # Get a free key at https://www.themoviedb.org/settings/api
+      # TMDB_API_KEY: your_tmdb_api_key_here
       # Optional: add direct HLS sources that you operate or are authorized to use.
       # HLS_TEMPLATE_SOURCES_JSON: >-
       #   [{"name":"my-source","movie_url_template":"https://example/movies/{tmdb_id}.m3u8","series_url_template":"https://example/series/{tvdb_id}/s{season:02d}e{episode:02d}.m3u8"}]

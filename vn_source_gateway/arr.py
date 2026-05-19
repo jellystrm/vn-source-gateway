@@ -90,6 +90,7 @@ class SonarrClient(ArrClient):
                     series_title=str(series.get("title") or "Untitled"),
                     episode_title=str(record.get("title") or ""),
                     year=as_int(series.get("year")),
+                    tmdb_id=as_int(series.get("tmdbId")),
                     tvdb_id=as_int(series.get("tvdbId")),
                     imdb_id=series.get("imdbId"),
                     season_number=int(record["seasonNumber"]),

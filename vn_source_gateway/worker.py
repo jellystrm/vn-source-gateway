@@ -22,7 +22,7 @@ class Worker:
         self.settings = settings
         self.radarr = RadarrClient(settings.radarr_url, settings.radarr_api_key)
         self.sonarr = SonarrClient(settings.sonarr_url, settings.sonarr_api_key)
-        self.sources = build_sources(settings.hls_template_sources)
+        self.sources = build_sources(settings.hls_template_sources, tmdb_api_key=settings.tmdb_api_key)
         self.state = StateStore(settings.state_path)
         self.downloader = HlsDownloader(settings.download_root, settings.ffmpeg_path, settings.ffmpeg_extra_args)
 

@@ -88,6 +88,7 @@ class Settings:
     public_base_url: str = "http://127.0.0.1:8765"
     qb_username: str = "admin"
     qb_password: str = "adminadmin"
+    tmdb_api_key: str = ""
     jellyfin_url: str = ""
     jellyfin_api_key: str = ""
     jellyfin_scan_after_strm: bool = False
@@ -144,6 +145,7 @@ class Settings:
             public_base_url=str(_value(file_data, "public_base_url", "PUBLIC_BASE_URL", "http://127.0.0.1:8765")).rstrip("/"),
             qb_username=str(_value(file_data, "qb_username", "QB_USERNAME", "admin")),
             qb_password=str(_value(file_data, "qb_password", "QB_PASSWORD", "adminadmin")),
+            tmdb_api_key=str(_value(file_data, "tmdb_api_key", "TMDB_API_KEY", "")),
             jellyfin_url=str(_value(file_data, "jellyfin_url", "JELLYFIN_URL", "")).rstrip("/"),
             jellyfin_api_key=str(_value(file_data, "jellyfin_api_key", "JELLYFIN_API_KEY", "")),
             jellyfin_scan_after_strm=_bool_value(file_data, "jellyfin_scan_after_strm", "JELLYFIN_SCAN_AFTER_STRM", False),
@@ -180,6 +182,7 @@ class Settings:
             "public_base_url": self.public_base_url,
             "qb_username": self.qb_username,
             "qb_password": self.qb_password,
+            "tmdb_api_key": self.tmdb_api_key,
             "jellyfin_url": self.jellyfin_url,
             "jellyfin_api_key": self.jellyfin_api_key,
             "jellyfin_scan_after_strm": self.jellyfin_scan_after_strm,
