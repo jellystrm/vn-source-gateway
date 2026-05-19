@@ -14,6 +14,53 @@ from .cards import (
 )
 from .styles import CSS
 
+# ---------------------------------------------------------------------------
+# Dashboard live-update script
+# Polls /dashboard every 5 s and replaces just the #pipeline card in-place,
+# preserving the open/closed state of every <details> panel so the user
+# doesn't lose their expanded rows on refresh.
+# ---------------------------------------------------------------------------
+_DASHBOARD_POLL_JS = r"""
+(function () {
+  var INTERVAL = 5000;
+
+  function openKeys() {
+    var keys = new Set();
+    document.querySelectorAll('#pipeline details[open]').forEach(function (d) {
+      var td = d.closest('td');
+      if (td) keys.add(td.textContent.trim().slice(0, 80));
+    });
+    return keys;
+  }
+
+  function restoreOpen(keys) {
+    document.querySelectorAll('#pipeline details').forEach(function (d) {
+      var td = d.closest('td');
+      if (td && keys.has(td.textContent.trim().slice(0, 80))) d.open = true;
+    });
+  }
+
+  function refresh() {
+    var open = openKeys();
+    fetch('/dashboard', {cache: 'no-store'})
+      .then(function (r) { return r.text(); })
+      .then(function (text) {
+        var tmp = document.createElement('div');
+        tmp.innerHTML = text;
+        var newCard = tmp.querySelector('#pipeline');
+        var oldCard = document.getElementById('pipeline');
+        if (newCard && oldCard) {
+          oldCard.replaceWith(newCard);
+          restoreOpen(open);
+        }
+      })
+      .catch(function () {});
+  }
+
+  setInterval(refresh, INTERVAL);
+})();
+"""
+
 _NAV = [
     ("dashboard", "Dashboard"),
     ("sources", "Sources"),
@@ -88,7 +135,6 @@ def render_page(settings: Settings, message: str, section: str, settings_tab: st
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  {'<meta http-equiv="refresh" content="5">' if section == "dashboard" else ""}
   <title>vn-source-gateway</title>
   <style>{CSS}</style>
 </head>
@@ -118,6 +164,7 @@ def render_page(settings: Settings, message: str, section: str, settings_tab: st
 
 </main>
 
+{'<script>' + _DASHBOARD_POLL_JS + '</script>' if section == "dashboard" else ""}
 </body>
 </html>"""
 
