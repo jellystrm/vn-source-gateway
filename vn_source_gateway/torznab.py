@@ -91,20 +91,31 @@ def _release_item(settings: Settings, release: GatewayRelease) -> str:
     link = f"{settings.public_base_url}/grab/{token}"
     category = "5000" if release.kind == "episode" else "2000"
     subcategory = "5040" if release.kind == "episode" else "2040"
+    size = 1024 * 1024 * 1024
     attrs = [
         f'<torznab:attr name="category" value="{category}"/>',
         f'<torznab:attr name="category" value="{subcategory}"/>',
+        f'<torznab:attr name="size" value="{size}"/>',
         '<torznab:attr name="seeders" value="999"/>',
         '<torznab:attr name="peers" value="999"/>',
+        '<torznab:attr name="leechers" value="0"/>',
+        '<torznab:attr name="downloadvolumefactor" value="0"/>',
+        '<torznab:attr name="uploadvolumefactor" value="1"/>',
     ]
     if release.imdb_id:
         attrs.append(f'<torznab:attr name="imdb" value="{xml_escape(release.imdb_id)}"/>')
+    if release.tmdb_id:
+        attrs.append(f'<torznab:attr name="tmdbid" value="{release.tmdb_id}"/>')
+    if release.tvdb_id:
+        attrs.append(f'<torznab:attr name="tvdbid" value="{release.tvdb_id}"/>')
     return f"""<item>
       <title>{xml_escape(title)}</title>
       <guid isPermaLink="false">vnsource-{hashlib.sha1(token.encode()).hexdigest()}</guid>
       <link>{xml_escape(link)}</link>
+      <comments>{xml_escape(link)}</comments>
       <pubDate>{formatdate(usegmt=True)}</pubDate>
-      <size>{1024 * 1024 * 1024}</size>
+      <size>{size}</size>
+      <enclosure url="{xml_escape(link)}" length="{size}" type="application/x-bittorrent"/>
       {''.join(attrs)}
     </item>"""
 
