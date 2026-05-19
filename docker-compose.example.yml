@@ -1,0 +1,39 @@
+services:
+  vn-source-worker:
+    build: .
+    container_name: vn-source-worker
+    restart: unless-stopped
+    environment:
+      PUBLIC_BASE_URL: http://vn-source-worker:8765
+      TORZNAB_API_KEY: vn-source
+      QB_USERNAME: admin
+      QB_PASSWORD: adminadmin
+      DEFAULT_OUTPUT_MODE: strm
+      EXPOSE_BOTH_MODES: "true"
+      DOWNLOAD_ROOT: /downloads/vn
+      MOVIE_STRM_ROOT: /movies
+      SERIES_STRM_ROOT: /shows
+      DOWNLOAD_CONTAINER: mkv
+      POLL_INTERVAL_SECONDS: "300"
+      SOURCE_ORDER: kkphim,ophim
+      LOG_LEVEL: INFO
+      UI_PORT: "8765"
+      # Optional: add direct HLS sources that you operate or are authorized to use.
+      # HLS_TEMPLATE_SOURCES_JSON: >-
+      #   [{"name":"my-source","movie_url_template":"https://example/movies/{tmdb_id}.m3u8","series_url_template":"https://example/series/{tvdb_id}/s{season:02d}e{episode:02d}.m3u8"}]
+    volumes:
+      # This path must be visible to Radarr/Sonarr with the same container path.
+      - ./downloads:/downloads
+      # These should point at the same folders Jellyfin scans.
+      - ./movies:/movies
+      - ./shows:/shows
+      - ./state:/state
+      - ./config:/config
+    ports:
+      - "8765:8765"
+    networks:
+      - media
+
+networks:
+  media:
+    external: true
