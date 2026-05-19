@@ -24,10 +24,14 @@ def caps_response() -> str:
   </searching>
   <categories>
     <category id="2000" name="Movies">
+      <subcat id="2010" name="Movies/Foreign"/>
       <subcat id="2040" name="Movies/HD"/>
     </category>
     <category id="5000" name="TV">
+      <subcat id="5020" name="TV/Foreign"/>
+      <subcat id="5030" name="TV/SD"/>
       <subcat id="5040" name="TV/HD"/>
+      <subcat id="5070" name="TV/Anime"/>
     </category>
   </categories>
 </caps>"""
@@ -76,7 +80,7 @@ def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[Gate
     #    cat contains 5xxx → TV; cat contains 2xxx → movie.
     # 4. tmdbid without other TV signals → movie (Radarr sends tmdbid for movies).
     cats = {c.strip() for c in _first(query, "cat", "").split(",") if c.strip()}
-    is_tv_by_cat = bool(cats & {"5000", "5030", "5040"}) and not bool(cats & {"2000", "2040"})
+    is_tv_by_cat = bool(cats & {"5000", "5020", "5030", "5040", "5070"}) and not bool(cats & {"2000", "2010", "2040"})
     is_tv = (
         t == "tvsearch"
         or season is not None
@@ -177,13 +181,16 @@ def _release_item(settings: Settings, release: GatewayRelease) -> str:
 
     title = f"{release.title}{year}{ep} 1080p VN{source_part}{server_part} [{mode_label}]"
     link = f"{settings.public_base_url}/grab/{token}"
-    category = "5000" if release.kind == "episode" else "2000"
-    subcategory = "5040" if release.kind == "episode" else "2040"
+    # Publish all relevant category IDs so Radarr/Sonarr accept the release
+    # regardless of which sub-category they were configured with.
+    if release.kind == "episode":
+        categories = ["5000", "5030", "5040"]   # TV, TV/SD, TV/HD
+    else:
+        categories = ["2000", "2010", "2040"]   # Movies, Movies/Foreign, Movies/HD
     # Season pack size is estimated as 20 episodes × 1 GB; individual = 1 GB
     size = 1024 * 1024 * 1024 * (20 if is_season_pack else 1)
     attrs = [
-        f'<torznab:attr name="category" value="{category}"/>',
-        f'<torznab:attr name="category" value="{subcategory}"/>',
+        *[f'<torznab:attr name="category" value="{c}"/>' for c in categories],
         f'<torznab:attr name="size" value="{size}"/>',
         '<torznab:attr name="seeders" value="999"/>',
         '<torznab:attr name="peers" value="999"/>',
