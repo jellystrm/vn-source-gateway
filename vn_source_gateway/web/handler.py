@@ -154,16 +154,31 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
         def _handle_qbit_login(self) -> None:
             settings = Settings.load()
             form = self._read_form()
-            if form.get("username", "") != settings.qb_username or form.get("password", "") != settings.qb_password:
-                log.warning("Download client login rejected for user=%s", form.get("username", ""))
-                self._send_text("Fails.\n", HTTPStatus.FORBIDDEN)
+            got_user = form.get("username", "").strip()
+            got_pass = form.get("password", "").strip()
+            exp_user = (settings.qb_username or "").strip()
+            exp_pass = (settings.qb_password or "").strip()
+            log.info(
+                "Download client login: got user=%r expected user=%r match=%s",
+                got_user, exp_user, got_user == exp_user and got_pass == exp_pass,
+            )
+            if got_user != exp_user or got_pass != exp_pass:
+                # qBittorrent returns HTTP 200 "Fails." for wrong credentials —
+                # some Radarr versions reject HTTP 403 as a connection error.
+                body = b"Fails."
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
                 return
-            log.info("Download client login accepted for user=%s", form.get("username", ""))
+            body = b"Ok."
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
             self.send_header("Set-Cookie", "SID=vn-source; HttpOnly; path=/")
             self.end_headers()
-            self.wfile.write(b"Ok.\n")
+            self.wfile.write(body)
 
         def _handle_qbit_add(self) -> None:
             settings = Settings.load()
