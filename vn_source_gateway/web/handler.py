@@ -7,13 +7,14 @@ from http.server import BaseHTTPRequestHandler
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from vn_source_gateway.application.grab_service import enqueue_from_url
+from vn_source_gateway.application.grab_service import decode_release, enqueue_from_url
 from vn_source_gateway.infrastructure.activity import ActivityLog
 from vn_source_gateway.infrastructure.config import Settings, save_settings
 from vn_source_gateway.interfaces.download_clients import qbittorrent
 from vn_source_gateway.interfaces.indexers.torznab import caps_response, search_response
-from .forms import form_to_config, parse_multipart, read_urlencoded, test_connection, test_connections
+from .forms import form_to_config, parse_multipart, parse_multipart_files, read_urlencoded, test_connection, test_connections
 from .page import ALL_SECTIONS, SECTION_ALIASES, render_page
+from .torrent import extract_announce, make_grab_torrent
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
             elif path == "/torznab/api":
                 self._handle_torznab(qs)
             elif path.startswith("/grab/"):
-                self._send_text("VN Source release URL. Add this through Radarr/Sonarr, not directly.\n")
+                self._handle_grab_download(path)
             elif path == "/api/v2/app/version":
                 self._send_text("4.6.0\n")
             elif path == "/api/v2/app/webapiVersion":
@@ -151,6 +152,35 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
             body = caps_response() if query.get("t", ["search"])[0] == "caps" else search_response(settings, query)
             self._send_xml(body)
 
+        def _handle_grab_download(self, path: str) -> None:
+            """Return a minimal .torrent file whose ``announce`` URL is the grab URL.
+
+            Radarr/Sonarr fetch this endpoint expecting a valid .torrent binary,
+            then POST that binary to ``/api/v2/torrents/add`` as a multipart file
+            upload.  We embed the original grab URL in the torrent so we can
+            recover it when the upload arrives.
+            """
+            token = path[len("/grab/"):].strip("/").split("?")[0]
+            if not token:
+                self.send_error(HTTPStatus.BAD_REQUEST, "Missing grab token")
+                return
+            try:
+                release = decode_release(token)
+            except Exception:
+                log.warning("Invalid grab token: %r", token)
+                self.send_error(HTTPStatus.BAD_REQUEST, "Invalid grab token")
+                return
+            settings = Settings.load()
+            grab_url = f"{settings.public_base_url}/grab/{token}"
+            torrent_bytes = make_grab_torrent(grab_url, release.title)
+            safe_name = release.title.replace("/", "-").replace("\\", "-")[:80]
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/x-bittorrent")
+            self.send_header("Content-Disposition", f'attachment; filename="{safe_name}.torrent"')
+            self.send_header("Content-Length", str(len(torrent_bytes)))
+            self.end_headers()
+            self.wfile.write(torrent_bytes)
+
         def _handle_qbit_login(self) -> None:
             settings = Settings.load()
             form = self._read_form()
@@ -182,25 +212,60 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
 
         def _handle_qbit_add(self) -> None:
             settings = Settings.load()
-            form = self._read_form()
-            urls = form.get("urls", "")
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length)
+            content_type = self.headers.get("Content-Type", "")
+
+            # Parse text fields (urls, category, paused, …)
+            if content_type.startswith("multipart/form-data"):
+                form = parse_multipart(body, content_type)
+                files = parse_multipart_files(body, content_type)
+            else:
+                form = read_urlencoded(body)
+                files = {}
+
             category = form.get("category", "vn-source")
             paused = form.get("paused", "").lower() in {"true", "1", "yes", "on"}
-            added = []
-            for url in urls.replace("\r", "\n").split("\n"):
+
+            # Collect candidate grab URLs from two sources:
+            #   1. ``torrents`` file upload — Radarr/Sonarr send the .torrent bytes
+            #      they fetched from /grab/{token}; we embedded the URL as ``announce``.
+            #   2. ``urls`` text field — direct URL add (magnet or HTTP).
+            candidate_urls: list[str] = []
+
+            torrent_bytes = files.get("torrents")
+            if torrent_bytes:
+                announce = extract_announce(torrent_bytes)
+                if announce and "/grab/" in announce:
+                    log.debug("qbit add: extracted grab URL from torrent announce: %s", announce)
+                    candidate_urls.append(announce)
+                else:
+                    log.warning("qbit add: torrent uploaded but no /grab/ announce URL found (announce=%r)", announce)
+
+            urls_field = form.get("urls", "")
+            for url in urls_field.replace("\r", "\n").split("\n"):
                 url = url.strip()
-                if not url:
-                    continue
-                job = enqueue_from_url(settings, url, category=category, paused=paused)
-                added.append(job.job_id)
+                if url:
+                    candidate_urls.append(url)
+
+            added = []
+            for url in candidate_urls:
+                try:
+                    job = enqueue_from_url(settings, url, category=category, paused=paused)
+                    added.append(job.job_id)
+                except Exception:
+                    log.exception("qbit add: failed to enqueue %r", url)
+
             if not added:
-                log.warning("Download client add rejected: missing urls field")
+                log.warning("Download client add rejected: no usable urls or torrents field")
                 self.send_error(HTTPStatus.BAD_REQUEST, "No supported urls field")
                 return
+
             log.info("Download client add accepted: category=%s paused=%s jobs=%s", category, paused, ",".join(added))
+            from vn_source_gateway.infrastructure.jobs import JobStore
+            store = JobStore(settings.state_path)
             for job_id in added:
-                from vn_source_gateway.infrastructure.jobs import JobStore
-                job = JobStore(settings.state_path).get(job_id)
+                job = store.get(job_id)
                 if job:
                     ActivityLog.get().add(
                         kind="grab",

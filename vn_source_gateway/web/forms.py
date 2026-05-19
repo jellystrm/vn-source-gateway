@@ -12,13 +12,13 @@ from vn_source_gateway.infrastructure.config import Settings
 log = logging.getLogger(__name__)
 
 
-def parse_multipart(body: bytes, content_type: str) -> dict[str, str]:
+def _parse_multipart_parts(body: bytes, content_type: str):
+    """Yield ``(name, is_file, raw_value)`` tuples for each multipart part."""
     marker = "boundary="
     if marker not in content_type:
-        return {}
+        return
     boundary = content_type.split(marker, 1)[1].strip().strip('"')
     delimiter = ("--" + boundary).encode("utf-8")
-    form: dict[str, str] = {}
     for part in body.split(delimiter):
         part = part.lstrip(b"\r\n")
         if not part or part.rstrip(b"\r\n-") == b"":
@@ -27,16 +27,34 @@ def parse_multipart(body: bytes, content_type: str) -> dict[str, str]:
         if not sep:
             continue
         headers = headers_raw.decode("utf-8", errors="ignore")
-        name = None
+        name: str | None = None
+        is_file = False
         for header in headers.split("\r\n"):
             if header.lower().startswith("content-disposition:"):
                 for segment in header.split(";"):
                     segment = segment.strip()
                     if segment.startswith("name="):
                         name = segment.split("=", 1)[1].strip('"')
+                    if segment.startswith("filename="):
+                        is_file = True
         if name:
-            form[name] = value.rstrip(b"\r\n").decode("utf-8", errors="ignore")
+            yield name, is_file, value.rstrip(b"\r\n")
+
+
+def parse_multipart(body: bytes, content_type: str) -> dict[str, str]:
+    form: dict[str, str] = {}
+    for name, _is_file, raw in _parse_multipart_parts(body, content_type):
+        form[name] = raw.decode("utf-8", errors="ignore")
     return form
+
+
+def parse_multipart_files(body: bytes, content_type: str) -> dict[str, bytes]:
+    """Return only file-upload fields (those with a ``filename=`` attribute) as raw bytes."""
+    files: dict[str, bytes] = {}
+    for name, is_file, raw in _parse_multipart_parts(body, content_type):
+        if is_file:
+            files[name] = raw
+    return files
 
 
 def read_urlencoded(body: bytes) -> dict[str, str]:
