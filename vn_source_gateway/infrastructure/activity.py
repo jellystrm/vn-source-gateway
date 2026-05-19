@@ -17,6 +17,7 @@ class ActivityEvent:
     detail: str = ""
     status: str = ""   # "ok" | "error" | ""
     ref: str = ""      # job_id for correlation
+    results: list = field(default_factory=list)  # release titles for search events
 
 
 class ActivityLog:
@@ -35,9 +36,11 @@ class ActivityLog:
                     cls._instance = ActivityLog()
         return cls._instance
 
-    def add(self, kind: str, title: str, detail: str = "", status: str = "", ref: str = "") -> None:
+    def add(self, kind: str, title: str, detail: str = "", status: str = "", ref: str = "",
+            results: list | None = None) -> None:
         event = ActivityEvent(ts=int(time.time()), kind=kind, title=title,
-                              detail=detail, status=status, ref=ref)
+                              detail=detail, status=status, ref=ref,
+                              results=results or [])
         with self._mu:
             self._events.append(event)
             if len(self._events) > _MAX:

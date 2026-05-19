@@ -42,11 +42,13 @@ def search_response(settings: Settings, query: dict[str, list[str]]) -> str:
         tvdb_id = _first(query, "tvdbid", "")
         kind = "TV" if (t == "tvsearch" or tvdb_id) else "Movie"
         label = q or (f"TMDB {tmdb_id}" if tmdb_id else "") or (f"TVDB {tvdb_id}" if tvdb_id else "") or "(no query)"
+        result_titles = [_release_display_title(r) for r in releases]
         ActivityLog.get().add(
             kind="search",
             title=f"{kind}: {label}",
             detail=f"{len(releases)} result(s) — sources: {', '.join(settings.source_order) or 'none'}",
             status="ok" if releases else "error",
+            results=result_titles,
         )
     items = "\n".join(_release_item(settings, release) for release in releases)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -156,6 +158,21 @@ def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[Gate
                         )
                     )
     return releases
+
+
+def _release_display_title(release: GatewayRelease) -> str:
+    """Human-readable title string matching what torznab returns in <title>."""
+    mode_label = "STRM" if release.output_mode == "strm" else "HLS-DL"
+    source_part = f" {release.source_name}" if release.source_name else ""
+    server_part = f" [{release.server_label}]" if release.server_label else ""
+    year = f" {release.year}" if release.year else ""
+    ep = ""
+    if release.kind == "episode" and release.season_number is not None:
+        if release.episode_number is not None:
+            ep = f" S{release.season_number:02d}E{release.episode_number:02d}"
+        else:
+            ep = f" S{release.season_number:02d}"
+    return f"{release.title}{year}{ep} 1080p VN{source_part}{server_part} [{mode_label}]"
 
 
 def _release_item(settings: Settings, release: GatewayRelease) -> str:

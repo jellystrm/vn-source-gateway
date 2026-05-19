@@ -251,11 +251,27 @@ def _indexer_card(settings: Settings) -> str:
             # detail = "5 result(s) — sources: ophim"
             results_part = ev.detail.split(" — ")[0] if " — " in ev.detail else ev.detail
             dot = "ok" if ev.status == "ok" else "err"
+            # Collapsible result list
+            result_items = getattr(ev, "results", []) or []
+            if result_items:
+                items_html = "".join(
+                    f"<div style='font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);color:var(--text)'>"
+                    f"{html.escape(t)}</div>"
+                    for t in result_items
+                )
+                results_detail = (
+                    f"<details class='pipe-detail'>"
+                    f"<summary>{html.escape(results_part)}</summary>"
+                    f"<div style='margin-top:6px;padding:8px 12px;background:rgba(0,0,0,0.2);border-radius:6px;border:1px solid var(--border)'>"
+                    f"{items_html}</div></details>"
+                )
+            else:
+                results_detail = f"<span style='color:var(--muted);font-size:12px'>{html.escape(results_part)}</span>"
             rows.append(
                 "<tr>"
                 f"<td style='color:var(--muted);font-size:11px;white-space:nowrap;padding:8px 10px'>{html.escape(age)}</td>"
                 f"<td style='padding:8px 10px'>{html.escape(ev.title)}</td>"
-                f"<td style='color:var(--muted);font-size:12px;padding:8px 10px'>{html.escape(results_part)}</td>"
+                f"<td style='padding:8px 10px'>{results_detail}</td>"
                 f"<td style='padding:8px 14px'><span class='sdot {dot}'></span></td>"
                 "</tr>"
             )
