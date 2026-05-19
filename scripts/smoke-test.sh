@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORK_DIR="${TMPDIR:-/tmp}/vn-source-worker-smoke"
+WORK_DIR="${TMPDIR:-/tmp}/vn-source-gateway-smoke"
 PORT="${PORT:-18765}"
 BASE_URL="http://127.0.0.1:${PORT}"
 
@@ -35,7 +35,7 @@ cat > "${WORK_DIR}/config.json" <<JSON
 }
 JSON
 
-CONFIG_PATH="${WORK_DIR}/config.json" python3 -m vn_source_worker > "${WORK_DIR}/server.log" 2>&1 &
+CONFIG_PATH="${WORK_DIR}/config.json" python3 -m vn_source_gateway > "${WORK_DIR}/server.log" 2>&1 &
 PID="$!"
 trap 'kill "${PID}" >/dev/null 2>&1 || true' EXIT
 

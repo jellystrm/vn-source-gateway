@@ -1,4 +1,4 @@
-# vn-source-worker
+# vn-source-gateway
 
 HLS source gateway for Radarr/Sonarr/Jellyseerr workflows.
 
@@ -37,7 +37,7 @@ Add the indexer:
 Settings -> Indexers -> Add -> Torznab -> Custom
 
 Name: VN Source
-URL: http://vn-source-worker:8765/torznab/api
+URL: http://vn-source-gateway:8765/torznab/api
 API Key: value from service UI, default vn-source
 Categories: 2000,2040,5000,5040
 ```
@@ -48,7 +48,7 @@ Add the download client:
 Settings -> Download Clients -> Add -> qBittorrent
 
 Name: VN Source
-Host: vn-source-worker
+Host: vn-source-gateway
 Port: 8765
 Username: value from service UI, default admin
 Password: value from service UI, default adminadmin
@@ -167,8 +167,8 @@ title, year, tmdb_id, tvdb_id, imdb_id, season, episode
 ## Local Smoke Test
 
 ```bash
-cd vn-source-worker
-python3 -m vn_source_worker --once
+cd vn-source-gateway
+python3 -m vn_source_gateway --once
 ```
 
 Full gateway smoke test:

@@ -1,10 +1,10 @@
 services:
-  vn-source-worker:
+  vn-source-gateway:
     build: .
-    container_name: vn-source-worker
+    container_name: vn-source-gateway
     restart: unless-stopped
     environment:
-      PUBLIC_BASE_URL: http://vn-source-worker:8765
+      PUBLIC_BASE_URL: http://vn-source-gateway:8765
       TORZNAB_API_KEY: vn-source
       QB_USERNAME: admin
       QB_PASSWORD: adminadmin

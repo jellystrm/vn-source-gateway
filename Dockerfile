@@ -9,7 +9,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY vn_source_worker ./vn_source_worker
+COPY vn_source_gateway ./vn_source_gateway
 
 ENV PYTHONUNBUFFERED=1
-CMD ["python", "-m", "vn_source_worker"]
+CMD ["python", "-m", "vn_source_gateway"]

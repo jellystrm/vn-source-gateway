@@ -21,6 +21,6 @@ export UI_HOST="${UI_HOST:-127.0.0.1}"
 export UI_PORT="${UI_PORT:-8765}"
 
 cd "${ROOT_DIR}"
-echo "vn-source-worker UI: http://127.0.0.1:${UI_PORT}"
+echo "vn-source-gateway UI: http://127.0.0.1:${UI_PORT}"
 echo "config: ${CONFIG_PATH}"
-python3 -m vn_source_worker "$@"
+python3 -m vn_source_gateway "$@"

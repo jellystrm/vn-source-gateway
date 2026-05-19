@@ -27,7 +27,7 @@ class UiServer:
         self.httpd = ThreadingHTTPServer((host, port), _handler_class())
 
     def start_background(self) -> None:
-        thread = threading.Thread(target=self.serve_forever, name="vn-source-worker-ui", daemon=True)
+        thread = threading.Thread(target=self.serve_forever, name="vn-source-gateway-ui", daemon=True)
         thread.start()
 
     def serve_forever(self) -> None:
@@ -37,7 +37,7 @@ class UiServer:
 
 def _handler_class() -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
-        server_version = "vn-source-worker-ui/0.1"
+        server_version = "vn-source-gateway-ui/0.1"
 
         def log_message(self, fmt: str, *args: object) -> None:
             log.debug("UI: " + fmt, *args)
@@ -110,7 +110,7 @@ def _handler_class() -> type[BaseHTTPRequestHandler]:
                 return
             if parsed.path == "/run-once":
                 settings = Settings.load()
-                threading.Thread(target=_run_once, args=(settings,), name="vn-source-worker-manual-run", daemon=True).start()
+                threading.Thread(target=_run_once, args=(settings,), name="vn-source-gateway-manual-run", daemon=True).start()
                 self._send_html(_render_page(settings, "Started one worker cycle in the background. Check service logs for details."))
                 return
             if parsed.path == "/api/v2/auth/login":
@@ -352,7 +352,7 @@ def _render_page(settings: Settings, message: str) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>vn-source-worker</title>
+  <title>vn-source-gateway</title>
   <style>
     :root {{
       color-scheme: light dark;
@@ -548,7 +548,7 @@ def _render_page(settings: Settings, message: str) -> str:
   <header>
     <div class="wrap top">
       <div>
-        <h1>vn-source-worker</h1>
+        <h1>vn-source-gateway</h1>
         <code>{html.escape(settings.config_path)}</code>
       </div>
       <form method="post" action="/run-once">

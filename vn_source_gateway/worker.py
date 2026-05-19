@@ -27,7 +27,7 @@ class Worker:
         self.downloader = HlsDownloader(settings.download_root, settings.ffmpeg_path, settings.ffmpeg_extra_args)
 
     def run_forever(self) -> None:
-        log.info("vn-source-worker started")
+        log.info("vn-source-gateway started")
         while True:
             started = time.time()
             try:
@@ -139,7 +139,7 @@ def main() -> None:
     )
     worker = Worker(settings)
     if settings.run_once or "--once" in sys.argv:
-        log.info("vn-source-worker running one cycle")
+        log.info("vn-source-gateway running one cycle")
         worker.run_once()
         return
     if settings.ui_enabled:
