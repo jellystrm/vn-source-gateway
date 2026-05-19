@@ -1,7 +1,10 @@
+# Date: 2025-06-01
+# https://github.com/jellystrm/vn-source-gateway
 services:
   vn-source-gateway:
     image: ghcr.io/jellystrm/vn-source-gateway:latest
     container_name: vn-source-gateway
+    network_mode: host
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -21,12 +24,15 @@ services:
       - POLL_INTERVAL_SECONDS=${POLL_INTERVAL_SECONDS}
       - LOG_LEVEL=${LOG_LEVEL}
       - UI_PORT=${UI_PORT}
-    ports:
-      - ${UI_PORT}:${UI_PORT}
     volumes:
-      - ${APPDATA_PATH}/vn-source-gateway/state:/state
-      - ${APPDATA_PATH}/vn-source-gateway/config:/config
-      - ${DOWNLOADS_PATH}:/downloads
-      - ${MOVIES_PATH}:/movies
-      - ${SHOWS_PATH}:/shows
+      # Thư mục cấu hình
+      - /appdata/vn-source-gateway:/config
+
+      # Thư mục tải về (Phải giống hệt Radarr/Sonarr)
+      - /srv/mergerfs/MainPool/downloads:/downloads
+
+      # Thư mục phim và series (Phải giống hệt Jellyfin)
+      - /srv/mergerfs/MainPool/Phim:/movies
+      - /srv/mergerfs/MainPool/Series:/shows
+
     restart: unless-stopped
