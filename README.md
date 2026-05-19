@@ -14,7 +14,7 @@ Radarr/Sonarr wanted list -> worker poll -> HLS download -> Radarr/Sonarr import
 
 The qBittorrent-compatible endpoint is only an API compatibility layer so Radarr/Sonarr can send grabs without patching their core. Internally this service either creates `.strm` files containing HLS URLs, or downloads HLS with `ffmpeg` to `.mkv`/`.mp4`.
 
-Use this only with sources you are legally allowed to access and archive. KKPhim/OPhim use public phimapi-compatible metadata exposing `link_m3u8`. VidSrc/embed-style sources are supported through direct HLS templates or resolver endpoints you control; this service does not bypass DRM, login walls, token systems, or anti-bot protections.
+Use this only with sources you are legally allowed to access and archive. Sources are configured via direct HLS templates or resolver endpoints you control; this service does not bypass DRM, login walls, token systems, or anti-bot protections.
 
 ## Quick Start
 
@@ -78,8 +78,8 @@ The service implements the qBittorrent Web API endpoints Radarr/Sonarr commonly 
 Manual search will show releases like:
 
 ```text
-Movie 2026 1080p VN kkphim [STRM]
-Movie 2026 1080p VN kkphim [HLS-DL]
+Movie 2026 1080p VN my-source [STRM]
+Movie 2026 1080p VN my-source [HLS-DL]
 ```
 
 `[STRM]` writes a `.strm` file. `[HLS-DL]` downloads the HLS stream with `ffmpeg`.
@@ -104,13 +104,6 @@ DOWNLOAD_ROOT=/downloads/vn
 This path should be visible to Radarr/Sonarr if you want them to import completed downloads.
 
 ## Supported Sources
-
-Built in:
-
-```text
-kkphim -> https://phimapi.com
-ophim  -> https://ophim1.com
-```
 
 Template/resolver based:
 
@@ -171,20 +164,10 @@ cd vn-source-gateway
 python3 -m vn_source_gateway --once
 ```
 
-Fake Radarr/Sonarr request test. This starts an isolated gateway on a temporary
-port, performs Torznab movie and TV searches, sends grabs through the
-qBittorrent-compatible API, verifies movie and episode `.strm` output, and
-checks task pause/resume/delete endpoints.
+Full gateway smoke test:
 
 ```bash
 ./scripts/smoke-test.sh
-```
-
-Real Radarr/Sonarr connection test. Start the gateway first, configure
-Radarr/Sonarr URL and API keys in the UI, then run:
-
-```bash
-./scripts/test-arr-connections.sh
 ```
 
 Start the UI locally:
@@ -211,8 +194,9 @@ Start the UI locally:
 | `SERIES_STRM_ROOT` | `/shows` | Series STRM library path |
 | `DOWNLOAD_ROOT` | `/downloads/vn` | HLS download staging path |
 | `DOWNLOAD_CONTAINER` | `mkv` | `mkv` or `mp4` |
-| `SOURCE_ORDER` | `kkphim,ophim` | Comma-separated source names |
-| `HLS_TEMPLATE_SOURCES_JSON` | empty | Adds VidSrc/embed/custom HLS resolvers |
+| `TMDB_API_KEY` | empty | Required for TV resolution via Torznab (TVDB → TMDB lookup). Get free at themoviedb.org |
+| `SOURCE_ORDER` | `kkphim,ophim` | Comma-separated source names; built-ins are `kkphim` and `ophim` |
+| `HLS_TEMPLATE_SOURCES_JSON` | empty | Adds custom HLS resolver endpoints you control |
 | `JELLYFIN_URL` | empty | Optional Jellyfin URL |
 | `JELLYFIN_API_KEY` | empty | Optional Jellyfin API key |
 | `JELLYFIN_SCAN_AFTER_STRM` | `false` | Call Jellyfin scan after STRM creation |

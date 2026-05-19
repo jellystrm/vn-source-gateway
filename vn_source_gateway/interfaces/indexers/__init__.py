@@ -1,0 +1,1 @@
+"""Indexer protocol interfaces."""

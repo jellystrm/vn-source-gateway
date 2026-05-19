@@ -24,6 +24,7 @@ class EpisodeWanted:
     series_title: str
     episode_title: str
     year: int | None
+    tmdb_id: int | None
     tvdb_id: int | None
     imdb_id: str | None
     season_number: int

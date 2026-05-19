@@ -8,11 +8,11 @@ from collections.abc import Callable
 from dataclasses import replace
 
 from vn_source_gateway.adapters.media_managers import RadarrClient, SonarrClient
-from vn_source_gateway.application.resolver import SourceResolver
-from vn_source_gateway.domain.models import SourceHit
+from vn_source_gateway.domain.models import EpisodeWanted, MovieWanted, SourceHit
 from vn_source_gateway.infrastructure.config import Settings
 from vn_source_gateway.infrastructure.downloader import HlsDownloader
 from vn_source_gateway.infrastructure.state import StateStore
+from vn_source_gateway.sources import Source, build_sources
 
 log = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class Worker:
         self.settings = settings
         self.radarr = RadarrClient(settings.radarr_url, settings.radarr_api_key)
         self.sonarr = SonarrClient(settings.sonarr_url, settings.sonarr_api_key)
-        self.resolver = SourceResolver.from_settings(settings)
+        self.sources = build_sources(settings.hls_template_sources, tmdb_api_key=settings.tmdb_api_key)
         self.state = StateStore(settings.state_path)
         self.downloader = HlsDownloader(settings.download_root, settings.ffmpeg_path, settings.ffmpeg_extra_args)
 
@@ -46,7 +46,7 @@ class Worker:
         self.settings = next_settings
         self.radarr = RadarrClient(next_settings.radarr_url, next_settings.radarr_api_key)
         self.sonarr = SonarrClient(next_settings.sonarr_url, next_settings.sonarr_api_key)
-        self.resolver = SourceResolver.from_settings(next_settings)
+        self.sources = build_sources(next_settings.hls_template_sources, tmdb_api_key=next_settings.tmdb_api_key)
         self.state = StateStore(next_settings.state_path)
         self.downloader = HlsDownloader(
             next_settings.download_root,
@@ -69,7 +69,7 @@ class Worker:
                 key=movie.key,
                 label=f"movie {movie.title}",
                 path=path,
-                resolver=lambda item=movie: self.resolver.resolve_movie(item),
+                resolver=lambda source, item=movie: source.resolve_movie(item),
                 importer=lambda import_path: self.radarr.import_path(import_path, self.settings.import_mode),
             )
 
@@ -85,7 +85,7 @@ class Worker:
                     f"S{episode.season_number:02d}E{episode.episode_number:02d}"
                 ),
                 path=path,
-                resolver=lambda item=episode: self.resolver.resolve_episode(item),
+                resolver=lambda source, item=episode: source.resolve_episode(item),
                 importer=lambda import_path: self.sonarr.import_path(import_path, self.settings.import_mode),
             )
 
@@ -94,7 +94,7 @@ class Worker:
         key: str,
         label: str,
         path: str,
-        resolver: Callable[[], SourceHit | None],
+        resolver: Callable[[Source], SourceHit | None],
         importer: Callable[[str], None],
     ) -> None:
         if os.path.exists(path):
@@ -105,7 +105,7 @@ class Worker:
             log.info("Skipping recent attempt: %s", label)
             return
 
-        hit = resolver()
+        hit = self._resolve(label, resolver)
         if not hit:
             log.info("No HLS source found for %s", label)
             return
@@ -113,6 +113,22 @@ class Worker:
         self.downloader.download(hit, path)
         self.state.mark_attempt(key, path, hit.source_name)
         importer(path)
+
+    def _resolve(self, label: str, resolver: Callable[[Source], SourceHit | None]) -> SourceHit | None:
+        for source_name in self.settings.source_order:
+            source = self.sources.get(source_name)
+            if not source:
+                log.warning("Unknown source in SOURCE_ORDER: %s", source_name)
+                continue
+            try:
+                hit = resolver(source)
+            except Exception:
+                log.exception("%s resolver failed for %s", source_name, label)
+                continue
+            if hit:
+                log.info("Resolved %s with %s", label, source_name)
+                return hit
+        return None
 
 
 def main() -> None:
@@ -127,7 +143,7 @@ def main() -> None:
         worker.run_once()
         return
     if settings.ui_enabled:
-        from vn_source_gateway.interfaces.http.server import UiServer
+        from vn_source_gateway.web import UiServer
 
         UiServer(settings.ui_host, settings.ui_port).start_background()
     worker.run_forever()

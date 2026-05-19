@@ -1,7 +1,6 @@
 __pycache__/
 *.py[cod]
 .venv/
-.claude/
 state/
 downloads/
 .local/

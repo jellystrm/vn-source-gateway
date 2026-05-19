@@ -5,8 +5,7 @@ import os
 import subprocess
 
 from vn_source_gateway.domain.models import EpisodeWanted, MovieWanted, SourceHit
-
-from .util import safe_filename
+from vn_source_gateway.infrastructure.util import safe_filename
 
 log = logging.getLogger(__name__)
 

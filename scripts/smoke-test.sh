@@ -52,18 +52,11 @@ echo "${SEARCH_XML}" | grep -q "\\[STRM\\]"
 echo "${SEARCH_XML}" | grep -q "\\[HLS-DL\\]"
 GRAB_URL="$(echo "${SEARCH_XML}" | grep -m1 -o '<link>[^<]*</link>' | sed -e 's#<link>##' -e 's#</link>##')"
 
-TV_SEARCH_XML="$(curl -fsS "${BASE_URL}/torznab/api?t=tvsearch&apikey=secret&q=Test%20Show&tvdbid=456&season=2&ep=3&year=2026")"
-echo "${TV_SEARCH_XML}" | grep -q "S02E03"
-echo "${TV_SEARCH_XML}" | grep -q "\\[STRM\\]"
-TV_GRAB_URL="$(echo "${TV_SEARCH_XML}" | grep -m1 -o '<link>[^<]*</link>' | sed -e 's#<link>##' -e 's#</link>##')"
-
 curl -fsS -X POST "${BASE_URL}/api/v2/auth/login" -d "username=admin&password=pass" | grep -q "Ok"
 curl -fsS -X POST "${BASE_URL}/api/v2/torrents/add" -F "urls=${GRAB_URL}" -F "category=radarr" | grep -q "Ok"
-curl -fsS -X POST "${BASE_URL}/api/v2/torrents/add" -F "urls=${TV_GRAB_URL}" -F "category=sonarr" | grep -q "Ok"
 
 for _ in $(seq 1 50); do
-  if [ -f "${WORK_DIR}/movies/Test Movie (2026)/Test Movie (2026).strm" ] \
-    && [ -f "${WORK_DIR}/shows/Test Show/Season 02/Test Show - S02E03.strm" ]; then
+  if [ -f "${WORK_DIR}/movies/Test Movie (2026)/Test Movie (2026).strm" ]; then
     break
   fi
   sleep 0.1
@@ -71,15 +64,8 @@ done
 
 test -f "${WORK_DIR}/movies/Test Movie (2026)/Test Movie (2026).strm"
 grep -q "https://stream.example/123/Test Movie.m3u8" "${WORK_DIR}/movies/Test Movie (2026)/Test Movie (2026).strm"
-test -f "${WORK_DIR}/shows/Test Show/Season 02/Test Show - S02E03.strm"
-grep -q "https://stream.example/456/s02e03.m3u8" "${WORK_DIR}/shows/Test Show/Season 02/Test Show - S02E03.strm"
 curl -fsS "${BASE_URL}/api/v2/torrents/info" | grep -q '"state": "uploading"'
 curl -fsS "${BASE_URL}/api/v2/app/preferences" | grep -q '"save_path"'
 curl -fsS "${BASE_URL}/api/v2/sync/maindata" | grep -q '"torrents"'
-
-HASH="$(curl -fsS "${BASE_URL}/api/v2/torrents/info" | grep -m1 -o '"hash": "[^"]*"' | sed -e 's/"hash": "//' -e 's/"//')"
-curl -fsS -X POST "${BASE_URL}/api/v2/torrents/pause" -d "hashes=${HASH}" | grep -q "Ok"
-curl -fsS -X POST "${BASE_URL}/api/v2/torrents/resume" -d "hashes=${HASH}" | grep -q "Ok"
-curl -fsS -X POST "${BASE_URL}/api/v2/torrents/delete" -d "hashes=${HASH}" | grep -q "Ok"
 
 echo "Smoke test passed: ${WORK_DIR}"

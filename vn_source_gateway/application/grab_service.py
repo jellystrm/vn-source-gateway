@@ -8,12 +8,12 @@ import threading
 import time
 from dataclasses import asdict, replace
 
+from vn_source_gateway.adapters.tmdb import TmdbClient
 from vn_source_gateway.application.output_service import OutputService
-from vn_source_gateway.application.resolver import SourceResolver
-from vn_source_gateway.domain.models import GatewayJob, GatewayRelease, SourceHit
+from vn_source_gateway.domain.models import EpisodeWanted, GatewayJob, GatewayRelease, MovieWanted, SourceHit
 from vn_source_gateway.infrastructure.config import Settings
 from vn_source_gateway.infrastructure.jobs import JobStore
-
+from vn_source_gateway.sources import Source, build_sources
 
 log = logging.getLogger(__name__)
 
@@ -62,7 +62,42 @@ def process_job(settings: Settings, job_id: str) -> None:
 
 
 def resolve_release(settings: Settings, release: GatewayRelease) -> SourceHit | None:
-    return SourceResolver.from_settings(settings).resolve_release(release)
+    release = _enrich_with_tmdb(settings, release)
+    sources = build_sources(settings.hls_template_sources, tmdb_api_key=settings.tmdb_api_key)
+    ordered = [release.source_name] if release.source_name else settings.source_order
+    for source_name in ordered:
+        if not source_name:
+            continue
+        source = sources.get(source_name)
+        if not source:
+            log.warning("Unknown or unconfigured source: %s", source_name)
+            continue
+        hit = _resolve_with_source(source, release)
+        if hit:
+            return hit
+    return None
+
+
+def _enrich_with_tmdb(settings: Settings, release: GatewayRelease) -> GatewayRelease:
+    """Fill in missing tmdb_id via TMDB API lookup when we only have tvdb_id or imdb_id."""
+    if release.tmdb_id:
+        return release
+    tmdb = TmdbClient(settings.tmdb_api_key)
+    if not tmdb.enabled:
+        return release
+    tmdb_id: int | None = None
+    if release.kind == "episode" and release.tvdb_id:
+        tmdb_id = tmdb.tmdb_id_for_tvdb(release.tvdb_id)
+        if tmdb_id:
+            log.debug("TMDB lookup: tvdb=%s → tmdb=%s", release.tvdb_id, tmdb_id)
+    if tmdb_id is None and release.imdb_id:
+        kind = "movie" if release.kind == "movie" else "tv"
+        tmdb_id = tmdb.tmdb_id_for_imdb(release.imdb_id, kind)
+        if tmdb_id:
+            log.debug("TMDB lookup: imdb=%s → tmdb=%s", release.imdb_id, tmdb_id)
+    if tmdb_id is None:
+        return release
+    return replace(release, tmdb_id=tmdb_id)
 
 
 def encode_release(release: GatewayRelease) -> str:
@@ -82,3 +117,30 @@ def decode_release_from_url(url: str) -> GatewayRelease:
         raise ValueError("Unsupported grab URL")
     token = url.split(marker, 1)[1].split("?", 1)[0].strip("/")
     return decode_release(token)
+
+
+def _resolve_with_source(source: Source, release: GatewayRelease) -> SourceHit | None:
+    if release.kind == "movie":
+        return source.resolve_movie(
+            MovieWanted(
+                radarr_id=0,
+                title=release.query or release.title,
+                year=release.year,
+                tmdb_id=release.tmdb_id,
+                imdb_id=release.imdb_id,
+            )
+        )
+    return source.resolve_episode(
+        EpisodeWanted(
+            sonarr_episode_id=0,
+            series_id=0,
+            series_title=release.query or release.title,
+            episode_title="",
+            year=release.year,
+            tmdb_id=release.tmdb_id,
+            tvdb_id=release.tvdb_id,
+            imdb_id=release.imdb_id,
+            season_number=release.season_number or 1,
+            episode_number=release.episode_number or 1,
+        )
+    )
