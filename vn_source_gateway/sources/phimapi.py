@@ -8,6 +8,7 @@ from typing import Any
 import requests
 
 from vn_source_gateway.adapters.tmdb import TmdbClient, TmdbSeriesInfo
+from vn_source_gateway.adapters.tvmaze import TVMazeClient
 from vn_source_gateway.domain.models import EpisodeWanted, MovieWanted, SourceHit
 from .base import Source
 from .scoring import detect_season, score_item, season_for_abs_ep
@@ -144,7 +145,7 @@ class PhimApiSource(Source):
                 return None
             seen.add(slug)
             _entry_passed += 1
-            hit = self._episode_hls_from_slug(slug, episode.season_number, episode.episode_number, tmdb_info, assigned_season, server_label)
+            hit = self._episode_hls_from_slug(slug, episode.season_number, episode.episode_number, tmdb_info, assigned_season, server_label, episode.tvdb_id)
             if hit:
                 suffix = f" via {via}" if via else ""
                 self._last_log = [f"S{episode.season_number:02d}E{episode.episode_number:02d} from '{slug}'{suffix}"]
@@ -280,6 +281,7 @@ class PhimApiSource(Source):
         tmdb_info: TmdbSeriesInfo,
         assigned_season: int | None,
         server_label: str = "",
+        tvdb_id: int | None = None,
     ) -> SourceHit | None:
         detail = self._detail(slug)
         if not detail:
@@ -296,6 +298,14 @@ class PhimApiSource(Source):
         current_s = detect_season(movie_node.get("name", ""), movie_node.get("origin_name", ""), s_year, tmdb_info, slug)
         if current_s is None:
             current_s = assigned_season
+
+        # Fetch TVMaze series info once (cached) for TVDB-aligned abs-ep mapping.
+        _tvmaze_info = None
+        if tvdb_id is not None:
+            try:
+                _tvmaze_info = TVMazeClient().get_series_info(tvdb_id)
+            except Exception:
+                pass
 
         seen_keys: set[tuple[str, int | None, str]] = set()
         for server in self._sorted_servers(detail, server_label):
@@ -321,14 +331,33 @@ class PhimApiSource(Source):
                     ep_m = re.search(r"(\d+)", clean)
                 num = int(ep_m.group(1)) if ep_m else 1
 
-                if tmdb_info.seasons:
+                # Absolute-episode → season mapping.
+                # Prefer TVMaze (TVDB-aligned) when tvdb_id is available;
+                # fall back to TMDB seasons otherwise.
+                # _tvmaze_info is fetched once per slug call (see below).
+                if _tvmaze_info is not None and _tvmaze_info.seasons:
+                    _tvmaze_mapped: int | None = None
+                    total = 0
+                    for tvs in _tvmaze_info.seasons:
+                        total += tvs.episode_count
+                        if num <= total:
+                            _tvmaze_mapped = tvs.season_number
+                            break
+                    if _tvmaze_mapped is not None:
+                        if current_s is None:
+                            rs = _tvmaze_mapped
+                        else:
+                            tvs_cur = next((s for s in _tvmaze_info.seasons if s.season_number == current_s), None)
+                            if tvs_cur and num > tvs_cur.episode_count:
+                                rs = _tvmaze_mapped
+                elif tmdb_info.seasons:
                     mapped_s = season_for_abs_ep(num, tmdb_info)
                     if mapped_s:
                         if current_s is None:
                             rs = mapped_s
                         else:
-                            s_info = next((s for s in tmdb_info.seasons if s.season_number == current_s), None)
-                            if s_info and num > s_info.episode_count:
+                            s_info_t = next((s for s in tmdb_info.seasons if s.season_number == current_s), None)
+                            if s_info_t and num > s_info_t.episode_count:
                                 rs = mapped_s
 
                 if rs is not None and rs != season:
