@@ -215,6 +215,35 @@ class Worker:
         return None
 
 
+def _resume_interrupted_jobs(settings: Settings) -> None:
+    """On startup, restart any grab-service jobs that were interrupted by a container restart.
+
+    Jobs created via the qBittorrent-compatible download client endpoint are
+    processed by per-job threads.  When the container restarts those threads
+    are gone, leaving jobs stuck in 'queued' or 'running' state.  This
+    function re-queues them and spawns fresh threads so they continue.
+    """
+    import threading
+    from vn_source_gateway.application.grab_service import process_job
+
+    store = JobStore(settings.state_path)
+    resumed = 0
+    for job in store.list_jobs():
+        if job.status in {"queued", "running"} and not job.paused:
+            # Reset to queued (clears any partial progress) and restart thread
+            store.update(job.job_id, status="queued", progress=0.0, error=None)
+            threading.Thread(
+                target=process_job,
+                args=(settings, job.job_id),
+                name=f"vn-source-job-{job.job_id[:8]}",
+                daemon=True,
+            ).start()
+            log.info("Resumed interrupted job %s (%s)", job.job_id[:8], job.release.title)
+            resumed += 1
+    if resumed:
+        log.info("Startup: resumed %d interrupted job(s)", resumed)
+
+
 def main() -> None:
     settings = Settings.load()
     logging.basicConfig(
@@ -230,4 +259,5 @@ def main() -> None:
         from vn_source_gateway.web import UiServer
 
         UiServer(settings.ui_host, settings.ui_port).start_background()
+    _resume_interrupted_jobs(settings)
     worker.run_forever()
