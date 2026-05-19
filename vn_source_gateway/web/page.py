@@ -176,6 +176,7 @@ def render_page(settings: Settings, message: str, section: str, settings_tab: st
 </main>
 
 {'<script>' + _DASHBOARD_POLL_JS + '</script>' if section == "dashboard" else ""}
+{"<script>document.addEventListener('DOMContentLoaded',function(){var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'))a.blur();});</script>" if section == "settings" else ""}
 </body>
 </html>"""
 

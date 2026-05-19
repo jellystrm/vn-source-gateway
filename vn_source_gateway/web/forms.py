@@ -104,21 +104,21 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
     if section == "radarr":
         data["radarr_url"] = form.get("radarr_url", "").strip().rstrip("/")
         data["radarr_api_key"] = form.get("radarr_api_key", "")
-        data["movie_strm_root"] = form.get("movie_strm_root", current.movie_strm_root).strip()
         data["movie_enabled"] = "movie_enabled" in form
+        data["poll_interval_seconds"] = integer("poll_interval_seconds", current.poll_interval_seconds)
+        data["max_items_per_poll"] = integer("max_items_per_poll", current.max_items_per_poll)
         return data
 
     if section == "sonarr":
         data["sonarr_url"] = form.get("sonarr_url", "").strip().rstrip("/")
         data["sonarr_api_key"] = form.get("sonarr_api_key", "")
-        data["series_strm_root"] = form.get("series_strm_root", current.series_strm_root).strip()
         data["series_enabled"] = "series_enabled" in form
+        data["poll_interval_seconds"] = integer("poll_interval_seconds", current.poll_interval_seconds)
+        data["max_items_per_poll"] = integer("max_items_per_poll", current.max_items_per_poll)
         return data
 
     if section == "worker":
         data["state_path"] = form.get("state_path", current.state_path).strip()
-        data["poll_interval_seconds"] = integer("poll_interval_seconds", current.poll_interval_seconds)
-        data["max_items_per_poll"] = integer("max_items_per_poll", current.max_items_per_poll)
         data["retry_after_seconds"] = integer("retry_after_seconds", current.retry_after_seconds)
         data["job_detail_retention_hours"] = integer("job_detail_retention_hours", current.job_detail_retention_hours)
         data["worker_enabled"] = "worker_enabled" in form

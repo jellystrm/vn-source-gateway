@@ -21,12 +21,23 @@ def _option(value: str, selected: object) -> str:
     return f'<option value="{_attr(value)}"{selected_attr}>{html.escape(value)}</option>'
 
 
+def _poll_schedule_fields(config: dict[str, Any]) -> str:
+    """Shared poll interval + max items row used by both Radarr and Sonarr cards."""
+    return f"""
+        <div class="row">
+          <div class="field"><label class="field-label">Poll Interval (seconds)</label>
+            <input name="poll_interval_seconds" type="number" min="10" value="{_attr(config["poll_interval_seconds"])}"></div>
+          <div class="field"><label class="field-label">Max Items Per Poll</label>
+            <input name="max_items_per_poll" type="number" min="1" value="{_attr(config["max_items_per_poll"])}"></div>
+        </div>"""
+
+
 def radarr_card(config: dict[str, Any]) -> str:
     return f"""
     <div class="card" id="radarr">
       <div class="card-header">
         <div><div class="card-title">Radarr</div>
-        <div class="card-desc">Movie manager connection used for missing movie polling and imports</div></div>
+        <div class="card-desc">Movie manager — connection, polling schedule, and import</div></div>
       </div>
       <div class="card-body">
         <div class="row">
@@ -34,9 +45,9 @@ def radarr_card(config: dict[str, Any]) -> str:
             <input name="radarr_url" value="{_attr(config["radarr_url"])}" placeholder="http://radarr:7878"></div>
           <div class="field"><label class="field-label">Radarr API Key</label>
             <input name="radarr_api_key" type="password" value="{_attr(config["radarr_api_key"])}"></div>
-          <div class="field"><label class="field-label">Movie STRM Root</label>
-            <input name="movie_strm_root" value="{_attr(config["movie_strm_root"])}"></div>
         </div>
+        <hr class="sep">
+        {_poll_schedule_fields(config)}
         <hr class="sep">
         <div class="checks">
           <label class="check-item"><input type="checkbox" name="movie_enabled" {_checked(config["movie_enabled"])}> Poll movies</label>
@@ -50,7 +61,7 @@ def sonarr_card(config: dict[str, Any]) -> str:
     <div class="card" id="sonarr">
       <div class="card-header">
         <div><div class="card-title">Sonarr</div>
-        <div class="card-desc">Series manager connection used for missing episode polling and imports</div></div>
+        <div class="card-desc">Series manager — connection, polling schedule, and import</div></div>
       </div>
       <div class="card-body">
         <div class="row">
@@ -58,9 +69,9 @@ def sonarr_card(config: dict[str, Any]) -> str:
             <input name="sonarr_url" value="{_attr(config["sonarr_url"])}" placeholder="http://sonarr:8989"></div>
           <div class="field"><label class="field-label">Sonarr API Key</label>
             <input name="sonarr_api_key" type="password" value="{_attr(config["sonarr_api_key"])}"></div>
-          <div class="field"><label class="field-label">Series STRM Root</label>
-            <input name="series_strm_root" value="{_attr(config["series_strm_root"])}"></div>
         </div>
+        <hr class="sep">
+        {_poll_schedule_fields(config)}
         <hr class="sep">
         <div class="checks">
           <label class="check-item"><input type="checkbox" name="series_enabled" {_checked(config["series_enabled"])}> Poll series</label>
@@ -74,14 +85,10 @@ def worker_card(config: dict[str, Any]) -> str:
     <div class="card" id="worker">
       <div class="card-header">
         <div><div class="card-title">Worker</div>
-        <div class="card-desc">Shared polling, state, and UI settings for the background worker</div></div>
+        <div class="card-desc">State storage, retry policy, and UI settings</div></div>
       </div>
       <div class="card-body">
         <div class="row">
-          <div class="field"><label class="field-label">Poll Interval (seconds)</label>
-            <input name="poll_interval_seconds" type="number" min="10" value="{_attr(config["poll_interval_seconds"])}"></div>
-          <div class="field"><label class="field-label">Max Items Per Poll</label>
-            <input name="max_items_per_poll" type="number" min="1" value="{_attr(config["max_items_per_poll"])}"></div>
           <div class="field"><label class="field-label">Retry After (seconds)</label>
             <input name="retry_after_seconds" type="number" min="0" value="{_attr(config["retry_after_seconds"])}"></div>
           <div class="field"><label class="field-label">Job Detail Retention (hours)</label>
