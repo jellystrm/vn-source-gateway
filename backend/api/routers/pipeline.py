@@ -14,8 +14,7 @@ from backend.infrastructure.activity import ActivityLog
 from backend.infrastructure.config import Settings, save_settings, _generate_torznab_key
 from backend.infrastructure.jobs import JobStore
 from backend.api.forms import form_to_config
-from backend.application.grab_service import encode_release
-from backend.interfaces.indexers.torznab import build_releases, search_response, _release_display_title
+from backend.interfaces.indexers.torznab import build_releases, search_response, _release_display_title, _release_grab_payload
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -142,10 +141,7 @@ async def test_grabber(request: Request) -> JSONResponse:
 
     releases = build_releases(settings, query)
     result_titles = [_release_display_title(r) for r in releases]
-    result_grabs = [
-        {"title": _release_display_title(r), "token": encode_release(r)}
-        for r in releases
-    ]
+    result_grabs = [_release_grab_payload(r) for r in releases]
     display_title = title or (f"TMDB {tmdb_id}" if tmdb_id else "Test query")
     kind = "TV" if media_type == "tv" else "Movie"
     query_url = f"{settings.public_base_url}/torznab/api?test=linkgrabber"

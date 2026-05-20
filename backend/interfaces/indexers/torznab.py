@@ -52,10 +52,7 @@ def search_response(settings: Settings, query: dict[str, list[str]]) -> str:
         # Skip logging test/RSS queries (no real show identifier)
         if display_title:
             result_titles = [_release_display_title(r) for r in releases]
-            result_grabs = [
-                {"title": _release_display_title(r), "token": encode_release(r)}
-                for r in releases
-            ]
+            result_grabs = [_release_grab_payload(r) for r in releases]
             ActivityLog.get().add(
                 kind="search",
                 title=f"{kind}: {display_title}",
@@ -194,6 +191,21 @@ def _release_display_title(release: GatewayRelease) -> str:
         else:
             ep = f" S{release.season_number:02d}"
     return f"{release.title}{year}{ep} 1080p VN{source_part}{server_part} [{mode_label}]"
+
+
+def _release_grab_payload(release: GatewayRelease) -> dict:
+    return {
+        "title": _release_display_title(release),
+        "token": encode_release(release),
+        "media_kind": release.kind,
+        "media_title": release.title,
+        "year": release.year,
+        "season": release.season_number,
+        "episode": release.episode_number,
+        "source": release.source_name or "",
+        "server": release.server_label,
+        "output_mode": release.output_mode,
+    }
 
 
 def _release_item(settings: Settings, release: GatewayRelease) -> str:

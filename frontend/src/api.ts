@@ -50,7 +50,18 @@ export interface PipelineJob {
 
 // ─── Activity ─────────────────────────────────────────────────────────────────
 
-export interface GrabToken { title: string; token: string }
+export interface GrabToken {
+  title: string
+  token: string
+  media_kind?: 'movie' | 'episode'
+  media_title?: string
+  year?: number | null
+  season?: number | null
+  episode?: number | null
+  source?: string
+  server?: string
+  output_mode?: 'strm' | 'download'
+}
 
 export interface ActivityEvent {
   ts: number

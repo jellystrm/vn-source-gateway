@@ -42,6 +42,10 @@ def test_test_grabber_adds_linkgrabber_activity(tmp_path, monkeypatch):
     assert events[0]["kind"] == "search"
     assert events[0]["title"] == "TV: One Piece"
     assert events[0]["grabs"]
+    assert events[0]["grabs"][0]["media_kind"] == "episode"
+    assert events[0]["grabs"][0]["media_title"] == "One Piece"
+    assert events[0]["grabs"][0]["season"] is None
+    assert events[0]["grabs"][0]["episode"] is None
 
 
 def test_test_indexer_returns_torznab_items(tmp_path, monkeypatch):
