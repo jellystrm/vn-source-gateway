@@ -95,6 +95,7 @@
         <span style="font-size:12.5px;color:var(--text-3)">
           {{ jobs.length }} tasks · {{ counts.running }} running · {{ counts.error }} errors · {{ counts.completed }} done
         </span>
+        <span v-if="hiddenJobsCount > 0" class="dedup-note">{{ hiddenJobsCount }} duplicate{{ hiddenJobsCount !== 1 ? 's' : '' }} hidden</span>
       </div>
     </div>
   </div>
@@ -163,7 +164,29 @@ const counts = computed(() => ({
   completed: jobs.value.filter(j => j.status === 'completed').length,
 }))
 
-const downloadGroups = computed<DownloadGroup[]>(() => {
+// ── Dedup helpers ──────────────────────────────────────────────────────────────
+// When the same episode is grabbed multiple times (worker + manual, or re-grab
+// after error), keep one job per output_mode — preferring active > done > failed.
+function bestJob(a: PipelineJob, b: PipelineJob): PipelineJob {
+  const priority: Record<string, number> = { running: 5, queued: 4, completed: 3, paused: 2, error: 1 }
+  const pa = priority[a.status] ?? 0
+  const pb = priority[b.status] ?? 0
+  if (pa !== pb) return pa > pb ? a : b
+  return a.created_at >= b.created_at ? a : b   // newer wins on tie
+}
+
+function deduplicateByMode(items: PipelineJob[]): { kept: PipelineJob[]; hidden: number } {
+  const modeMap = new Map<string, PipelineJob>()
+  for (const job of items) {
+    const existing = modeMap.get(job.output_mode)
+    modeMap.set(job.output_mode, existing ? bestJob(existing, job) : job)
+  }
+  return { kept: [...modeMap.values()], hidden: items.length - modeMap.size }
+}
+
+// Wrap into a single computed so groups + dedupCount are computed together
+const _groupsResult = computed(() => {
+  let hiddenJobs = 0
   const map = new Map<string, PipelineJob[]>()
   for (const job of jobs.value) {
     const key = `${job.kind}:${job.title}`
@@ -171,7 +194,7 @@ const downloadGroups = computed<DownloadGroup[]>(() => {
     list.push(job)
     map.set(key, list)
   }
-  return [...map.entries()].map(([key, items]) => {
+  const groups: DownloadGroup[] = [...map.entries()].map(([key, items]) => {
     const first = items[0]
     const kind = first.kind === 'movie' ? 'movie' : 'tv'
     const group: DownloadGroup = {
@@ -185,7 +208,10 @@ const downloadGroups = computed<DownloadGroup[]>(() => {
       jobIds: items.map(j => j.id),
     }
     if (kind === 'movie') {
-      group.jobs = sortJobs(items)
+      const { kept, hidden } = deduplicateByMode(items)
+      hiddenJobs += hidden
+      group.jobs = sortJobs(kept)
+      group.count = kept.length
       return group
     }
     const seasonMap = new Map<number, PipelineJob[]>()
@@ -203,14 +229,18 @@ const downloadGroups = computed<DownloadGroup[]>(() => {
         list.push(job)
         episodeMap.set(episode, list)
       }
-      const episodes = [...episodeMap.entries()].sort(([a], [b]) => a - b).map(([episode, epJobs]) => ({
-        key: `${key}:s${season}:e${episode}`,
-        label: episode ? `Episode ${episode}` : 'Season pack',
-        jobs: sortJobs(epJobs),
-        status: aggregateStatus(epJobs),
-        progress: Math.round((epJobs.reduce((sum, job) => sum + job.progress, 0) / Math.max(epJobs.length, 1)) * 100),
-        jobIds: epJobs.map(j => j.id),
-      }))
+      const episodes = [...episodeMap.entries()].sort(([a], [b]) => a - b).map(([episode, epJobs]) => {
+        const { kept, hidden } = deduplicateByMode(epJobs)
+        hiddenJobs += hidden
+        return {
+          key: `${key}:s${season}:e${episode}`,
+          label: episode ? `Episode ${episode}` : 'Season pack',
+          jobs: sortJobs(kept),
+          status: aggregateStatus(kept),
+          progress: Math.round((kept.reduce((sum, job) => sum + job.progress, 0) / Math.max(kept.length, 1)) * 100),
+          jobIds: epJobs.map(j => j.id),   // ALL ids so delete removes every copy
+        }
+      })
       return {
         key: `${key}:s${season}`,
         label: `Season ${season}`,
@@ -221,7 +251,11 @@ const downloadGroups = computed<DownloadGroup[]>(() => {
     })
     return group
   })
+  return { groups, hiddenJobs }
 })
+
+const downloadGroups = computed(() => _groupsResult.value.groups)
+const hiddenJobsCount = computed(() => _groupsResult.value.hiddenJobs)
 
 async function load() {
   try { jobs.value = await getPipeline() } catch {}
@@ -383,6 +417,22 @@ details[open] > summary .chev::before { transform: rotate(90deg); }
 .error-text { color: var(--red); }
 .done-text { color: var(--green); }
 .job-actions { display: flex; gap: 5px; justify-content: flex-end; }
+.card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  border-top: 1px solid var(--border);
+}
+.dedup-note {
+  font-size: 11.5px;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
 @media (max-width: 900px) {
   .tree-node > summary { grid-template-columns: 18px auto minmax(120px, 1fr) auto; }
   .tree-node > summary .pill { display: none; }

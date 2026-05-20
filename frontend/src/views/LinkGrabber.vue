@@ -76,7 +76,8 @@
       </details>
 
       <div class="card-foot">
-        <span style="font-size:12.5px;color:var(--text-3)">{{ grabEvents.length }} grab lists · {{ grabsCount }} links</span>
+        <span style="font-size:12.5px;color:var(--text-3)">{{ deduplicatedEvents.length }} grab lists · {{ grabsCount }} links</span>
+        <span v-if="dupSearchCount > 0" class="dedup-note">{{ dupSearchCount }} duplicate{{ dupSearchCount !== 1 ? 's' : '' }} hidden</span>
       </div>
     </div>
   </div>
@@ -137,7 +138,24 @@ let timer: ReturnType<typeof setInterval>
 
 const grabEvents = computed(() => events.value.filter(e => e.kind === 'search' && e.grabs.length > 0))
 const grabsCount = computed(() => grabEvents.value.reduce((sum, e) => sum + e.grabs.length, 0))
-const mediaGroups = computed(() => grabEvents.value.map(toMediaNode))
+
+// Dedup: keep only the most recent search event per (kind + title).
+// Radarr/Sonarr re-search the same media on every scan cycle — no need to show N copies.
+const deduplicatedEvents = computed(() => {
+  const seen = new Map<string, ActivityEvent>()
+  // iterate newest-first so the first .set() always wins = newest
+  for (const ev of [...grabEvents.value].sort((a, b) => b.ts - a.ts)) {
+    const first = ev.grabs[0]
+    const kind = isTvEvent(ev, first) ? 'tv' : 'movie'
+    const title = mediaTitle(ev, first).toLowerCase().trim()
+    const key = `${kind}:${title}`
+    if (!seen.has(key)) seen.set(key, ev)
+  }
+  return [...seen.values()].sort((a, b) => b.ts - a.ts)
+})
+
+const dupSearchCount = computed(() => grabEvents.value.length - deduplicatedEvents.value.length)
+const mediaGroups = computed(() => deduplicatedEvents.value.map(toMediaNode))
 
 async function load() {
   try { events.value = await getActivity() } catch {}
@@ -388,6 +406,21 @@ details[open] > summary .chev::before { transform: rotate(90deg); }
   color: var(--text);
 }
 .grab-btn-dl:hover { background: var(--surface-3); }
+.card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  border-top: 1px solid var(--border);
+}
+.dedup-note {
+  font-size: 11.5px;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 8px;
+}
 @media (max-width: 900px) {
   .tree-node > summary { grid-template-columns: 18px auto minmax(120px, 1fr) auto; }
   .tree-node > summary .pill, .node-time { display: none; }
