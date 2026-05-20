@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from .base import Source
@@ -16,12 +17,14 @@ __all__ = [
     "BUILTIN_SOURCES",
 ]
 
+log = logging.getLogger(__name__)
+
 # Built-in sources — always available without user configuration.
-# User-defined DirectHlsTemplateSource entries can supplement or override these.
+# User-defined DirectHlsTemplateSource entries can supplement these.
 #
 # API documentation:
 #   kkphim  https://kkphim.vip/tai-lieu-api        (PhimAPI-compatible)
-#   ophim   https://ophim17.cc/api-document         (PhimAPI-compatible)
+#   ophim   https://ophim17.cc/api-document         (PhimAPI-compatible docs)
 #   nguonc  https://phim.nguonc.com/api-document    (custom schema)
 BUILTIN_SOURCES: dict[str, str] = {
     "kkphim": "https://phimapi.com",
@@ -36,9 +39,9 @@ DEFAULT_SOURCE_ORDER: list[str] = ["kkphim", "ophim", "nguonc"]
 def build_sources(template_configs: list[dict[str, Any]], tmdb_api_key: str = "") -> dict[str, Source]:
     """Build the active source registry.
 
-    Priority (highest to lowest when the same name appears):
-    1. User-defined DirectHlsTemplateSource entries from ``hls_template_sources``
-    2. Built-in source entries (kkphim / ophim / nguonc)
+    Built-in source names are reserved. User-defined templates with names such
+    as ``kkphim``, ``ophim``, or ``nguonc`` are ignored so stale config cannot
+    silently replace the maintained resolver implementations.
     """
     # Start with built-ins
     sources: dict[str, Source] = {
@@ -46,8 +49,10 @@ def build_sources(template_configs: list[dict[str, Any]], tmdb_api_key: str = ""
         "ophim": PhimApiSource("ophim", BUILTIN_SOURCES["ophim"], tmdb_api_key=tmdb_api_key),
         "nguonc": NguonCSource("nguonc", BUILTIN_SOURCES["nguonc"], tmdb_api_key=tmdb_api_key),
     }
-    # User-defined templates override built-ins when the same name is used
     for config in template_configs:
         source = DirectHlsTemplateSource(config)
+        if source.name in BUILTIN_SOURCES:
+            log.warning("Ignoring custom source %r because it conflicts with a built-in source", source.name)
+            continue
         sources[source.name] = source
     return sources

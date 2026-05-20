@@ -106,7 +106,7 @@ import { getConfig, saveSettings } from '../api'
 const BUILTINS = ['kkphim', 'ophim', 'nguonc']
 const BUILTIN_URLS: Record<string, string> = {
   kkphim: 'https://phimapi.com',
-  ophim:  'https://ophim17.cc',
+  ophim:  'https://ophim1.com',
   nguonc: 'https://phim.nguonc.com',
 }
 

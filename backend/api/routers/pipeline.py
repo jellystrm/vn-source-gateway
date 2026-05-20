@@ -28,7 +28,7 @@ async def health_check() -> JSONResponse:
         "sonarr":  settings.sonarr_url  or "",
         "jellyfin":settings.jellyfin_url or "",
         "kkphim":  "https://phimapi.com",
-        "ophim":   "https://ophim17.cc",
+        "ophim":   "https://ophim1.com",
         "nguonc":  "https://phim.nguonc.com",
     }
 
