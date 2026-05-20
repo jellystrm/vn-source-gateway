@@ -29,7 +29,7 @@
             <th>Status</th>
             <th class="right">Links</th>
             <th>Time</th>
-            <th style="min-width:160px">Grabs</th>
+            <th class="grab-col">Grab options</th>
           </tr>
         </thead>
         <tbody>
@@ -50,15 +50,18 @@
               <span style="font-size:12px;color:var(--text-3);white-space:nowrap">{{ relTime(ev.ts) }}</span>
             </td>
             <td>
-              <div v-if="ev.grabs.length" style="display:flex;flex-wrap:wrap;gap:4px">
-                <template v-for="g in ev.grabs" :key="g.token">
-                  <button class="grab-btn" @click="grab(g.token, 'strm')" title="Grab as .strm">
-                    {{ g.title }} ·strm
-                  </button>
-                  <button class="grab-btn grab-btn-dl" @click="grab(g.token, 'hls-dl')" title="Download HLS">
-                    dl
-                  </button>
-                </template>
+              <div v-if="ev.grabs.length" class="grab-list">
+                <div v-for="g in ev.grabs" :key="g.token" class="grab-option">
+                  <div class="grab-title">{{ g.title }}</div>
+                  <div class="grab-actions">
+                    <button class="grab-btn" @click="grab(g.token, 'strm')" title="Create STRM file">
+                      STRM
+                    </button>
+                    <button class="grab-btn grab-btn-dl" @click="grab(g.token, 'hls-dl')" title="Download HLS to media file">
+                      HLS-DL
+                    </button>
+                  </div>
+                </div>
               </div>
               <span v-else style="color:var(--text-3);font-size:12px">—</span>
             </td>
@@ -116,9 +119,10 @@ onUnmounted(() => clearInterval(timer))
 
 <style scoped>
 .grab-btn {
-  font-size: 11px; font-weight: 500;
+  min-width: 54px;
+  font-size: 11px; font-weight: 700;
   background: var(--teal-soft); border: 1px solid var(--teal-line);
-  border-radius: 5px; color: var(--teal); padding: 3px 8px;
+  border-radius: 5px; color: var(--teal); padding: 4px 8px;
   cursor: pointer; transition: background .12s; white-space: nowrap;
   font-family: var(--font-sans);
 }
@@ -127,4 +131,38 @@ onUnmounted(() => clearInterval(timer))
   background: var(--surface-2); border-color: var(--border-2); color: var(--text-2);
 }
 .grab-btn-dl:hover { background: var(--surface-3); color: var(--text); }
+.grab-col { min-width: 520px; }
+.grab-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.grab-option {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  background: rgba(255,255,255,.025);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.grab-title {
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grab-actions {
+  display: flex;
+  gap: 5px;
+}
+@media (max-width: 1000px) {
+  .grab-col { min-width: 360px; }
+  .grab-option { grid-template-columns: 1fr; align-items: stretch; }
+  .grab-actions { justify-content: flex-start; }
+}
 </style>

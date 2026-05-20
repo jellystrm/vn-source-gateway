@@ -11,7 +11,7 @@ export interface SourceResult {
   message?: string
   url?: string
   urls?: SourceHit[]
-  episodes?: { num: number; url: string | null }[]
+  episodes?: { season?: number; num: number; url: string | null }[]
   found?: number
   total?: number
   log?: string[]

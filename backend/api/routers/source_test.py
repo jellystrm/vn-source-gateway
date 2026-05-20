@@ -27,6 +27,53 @@ def _season_ep_count(tmdb_id: int | None, season: int, settings: Any) -> int | N
     return None
 
 
+def _season_plan(tmdb_id: int | None, season: int | None, episode: int | None, settings: Any) -> tuple[list[tuple[int, list[int]]], list[str]]:
+    notes: list[str] = []
+    info = None
+    if tmdb_id and settings.tmdb_api_key:
+        from backend.adapters.tmdb import TmdbClient
+        try:
+            info = TmdbClient(settings.tmdb_api_key).get_series_info(tmdb_id)
+        except Exception:
+            info = None
+
+    if season is None:
+        season_numbers = [s.season_number for s in (getattr(info, "seasons", None) or []) if s.season_number > 0]
+        if not season_numbers:
+            season_numbers = [1]
+            notes.append("No season selected and TMDB season list unavailable; scanning season 1 only")
+        else:
+            notes.append(f"No season selected; scanning {len(season_numbers)} season(s)")
+    else:
+        season_numbers = [season]
+
+    plan: list[tuple[int, list[int]]] = []
+    total = 0
+    max_episodes = 200
+    for season_num in season_numbers:
+        if episode is not None:
+            eps = [episode]
+        else:
+            count = None
+            if info:
+                for s in info.seasons:
+                    if s.season_number == season_num:
+                        count = s.episode_count
+                        break
+            count = count or _season_ep_count(tmdb_id, season_num, settings) or 13
+            eps = list(range(1, count + 1))
+
+        remaining = max_episodes - total
+        if remaining <= 0:
+            break
+        if len(eps) > remaining:
+            eps = eps[:remaining]
+            notes.append(f"Scan capped at {max_episodes} episode(s)")
+        total += len(eps)
+        plan.append((season_num, eps))
+    return plan, notes
+
+
 def _resolve_ep_fresh(
     hls_template_sources: list, tmdb_api_key: str, source_name: str,
     title: str, year: int | None, tmdb_id: int | None,
@@ -67,9 +114,7 @@ async def source_test(request: Request) -> Response:
     year_raw = params.get("year")
     year = int(year_raw) if year_raw else None
 
-    # all_eps_mode: TV series + no specific episode → scan the full season
-    # Works whether or not the user filled in the season field (defaults to S01)
-    all_eps_mode = (media_type == "tv" and episode is None)
+    scan_mode = (media_type == "tv" and (season is None or episode is None))
     eff_season = season if season is not None else 1
     eff_episode = episode if episode is not None else 1
     test_log: list[str] = [
@@ -105,32 +150,36 @@ async def source_test(request: Request) -> Response:
     sources = build_sources(settings.hls_template_sources, tmdb_api_key=settings.tmdb_api_key)
     results: dict[str, dict] = {}
 
-    if all_eps_mode:
-        ep_count = _season_ep_count(tmdb_id, eff_season, settings)
-        ep_count = min(ep_count or 13, 50)
-        test_log.append(f"Scanning S{eff_season:02d}: {ep_count} episode(s)")
+    if scan_mode:
+        plan, plan_notes = _season_plan(tmdb_id, season, episode, settings)
+        test_log.extend(plan_notes)
+        test_log.append(
+            "Scanning "
+            + ", ".join(f"S{s:02d}: {len(eps)} episode(s)" for s, eps in plan)
+        )
         for source_name in sources:
-            ep_map: dict[int, list] = {}
+            ep_map: dict[tuple[int, int], list] = {}
             with ThreadPoolExecutor(max_workers=6) as pool:
                 futs = {
                     pool.submit(
                         _resolve_ep_fresh,
                         settings.hls_template_sources, settings.tmdb_api_key,
                         source_name, title, year, tmdb_id, tvdb_id,
-                        eff_season, ep_num,
-                    ): ep_num
-                    for ep_num in range(1, ep_count + 1)
+                        season_num, ep_num,
+                    ): (season_num, ep_num)
+                    for season_num, ep_nums in plan
+                    for ep_num in ep_nums
                 }
                 for f in as_completed(futs):
-                    ep_num = futs[f]
+                    key = futs[f]
                     try:
                         hits, _ = f.result()
-                        ep_map[ep_num] = hits
+                        ep_map[key] = hits
                     except Exception:
-                        ep_map[ep_num] = []
+                        ep_map[key] = []
             episodes_out = [
-                {"num": n, "url": ep_map[n][0].hls_url if ep_map[n] else None}
-                for n in sorted(ep_map)
+                {"season": s, "num": ep, "url": ep_map[(s, ep)][0].hls_url if ep_map[(s, ep)] else None}
+                for s, ep in sorted(ep_map)
             ]
             found = sum(1 for e in episodes_out if e["url"])
             results[source_name] = {
@@ -138,7 +187,7 @@ async def source_test(request: Request) -> Response:
                 "message": None if found > 0 else "Not found",
                 "episodes": episodes_out,
                 "found": found,
-                "total": ep_count,
+                "total": sum(len(eps) for _, eps in plan),
                 "log": test_log,
             }
     else:

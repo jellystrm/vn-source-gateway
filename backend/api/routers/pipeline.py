@@ -135,8 +135,10 @@ async def test_grabber(request: Request) -> JSONResponse:
     if year is not None:
         query["year"] = [str(year)]
     if media_type == "tv":
-        query["season"] = [str(season or 1)]
-        query["ep"] = [str(episode or 1)]
+        if season is not None:
+            query["season"] = [str(season)]
+        if episode is not None:
+            query["ep"] = [str(episode)]
 
     releases = build_releases(settings, query)
     result_titles = [_release_display_title(r) for r in releases]
@@ -184,8 +186,10 @@ async def test_indexer(request: Request) -> JSONResponse:
     if year is not None:
         query["year"] = [str(year)]
     if media_type == "tv":
-        query["season"] = [str(season or 1)]
-        query["ep"] = [str(episode or 1)]
+        if season is not None:
+            query["season"] = [str(season)]
+        if episode is not None:
+            query["ep"] = [str(episode)]
 
     xml = search_response(settings, query)
     root = ET.fromstring(xml)

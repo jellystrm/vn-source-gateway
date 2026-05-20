@@ -69,11 +69,11 @@
           <template v-if="mediaType === 'tv'">
             <div class="field">
               <label>Season</label>
-              <input v-model="season" class="input mono" type="number" placeholder="1" />
+              <input v-model="season" class="input mono" type="number" placeholder="all" />
             </div>
             <div class="field">
               <label>Episode</label>
-              <input v-model="episode" class="input mono" type="number" placeholder="1" />
+              <input v-model="episode" class="input mono" type="number" placeholder="all" />
             </div>
           </template>
         </div>
@@ -185,8 +185,10 @@ const payload = computed<SourceTestRequest>(() => {
   p.title = valueOrDefault(title.value, defaults.value.title)
   if (yr !== undefined) p.year = yr
   if (mediaType.value === 'tv') {
-    p.season = intVal(season.value) ?? 1
-    p.episode = intVal(episode.value) ?? 1
+    const s = intVal(season.value)
+    const ep = intVal(episode.value)
+    if (s !== undefined) p.season = s
+    if (ep !== undefined) p.episode = ep
   }
   return p
 })
@@ -341,7 +343,8 @@ function logSourceResult(name: string, result: SourceResult) {
     }
     if (result.episodes) {
       for (const ep of result.episodes.filter(e => e.url).slice(0, 12)) {
-        addLog('l-info', `${name.padEnd(8)}    E${String(ep.num).padStart(2, '0')} · ${ep.url}`)
+        const prefix = ep.season ? `S${String(ep.season).padStart(2, '0')}E${String(ep.num).padStart(2, '0')}` : `E${String(ep.num).padStart(2, '0')}`
+        addLog('l-info', `${name.padEnd(8)}    ${prefix} · ${ep.url}`)
       }
     }
   } else {
@@ -354,7 +357,11 @@ function describePayload() {
   const p = payload.value
   const id = p.tmdb_id ? `TMDB ${p.tmdb_id}` : 'no TMDB'
   const name = p.title ? `"${p.title}"` : id
-  if (p.media_type === 'tv') return `${name} S${String(p.season || 1).padStart(2, '0')}E${String(p.episode || 1).padStart(2, '0')}`
+  if (p.media_type === 'tv') {
+    const seasonLabel = p.season ? `S${String(p.season).padStart(2, '0')}` : 'all seasons'
+    const epLabel = p.episode ? `E${String(p.episode).padStart(2, '0')}` : 'all episodes'
+    return `${name} ${seasonLabel} ${epLabel}`
+  }
   return name
 }
 
