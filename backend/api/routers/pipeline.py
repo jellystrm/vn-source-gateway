@@ -112,6 +112,17 @@ def activity() -> JSONResponse:
     return JSONResponse([dataclasses.asdict(e) for e in events])
 
 
+@router.post("/api/activity/delete")
+async def activity_delete(request: Request) -> JSONResponse:
+    data = await request.json()
+    ts = _int_or_none(data.get("ts"))
+    title = str(data.get("title") or "")
+    if ts is None or not title:
+        return JSONResponse({"status": "error", "message": "Missing ts/title"}, status_code=400)
+    deleted = ActivityLog.get().delete(ts, title)
+    return JSONResponse({"status": "ok", "deleted": deleted})
+
+
 @router.post("/api/test-grabber")
 async def test_grabber(request: Request) -> JSONResponse:
     """Create a fake LinkGrabber search event from test input."""

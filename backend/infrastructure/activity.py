@@ -67,6 +67,15 @@ class ActivityLog:
         with self._mu:
             return list(reversed(self._events[-n:]))
 
+    def delete(self, ts: int, title: str) -> bool:
+        with self._mu:
+            before = len(self._events)
+            self._events = [e for e in self._events if not (e.ts == ts and e.title == title)]
+            changed = len(self._events) != before
+            if changed and self._path:
+                _save(self._path, self._events)
+            return changed
+
 
 # ---------------------------------------------------------------------------
 # Disk helpers

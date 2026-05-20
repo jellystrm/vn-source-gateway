@@ -65,3 +65,17 @@ def test_test_indexer_returns_torznab_items(tmp_path, monkeypatch):
     assert body["key_required"] is True
     assert "apikey=***" in body["url"]
     assert any("Inception" in title for title in body["results"])
+
+
+def test_activity_delete_removes_event(tmp_path, monkeypatch):
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.json"))
+    ActivityLog.init(str(tmp_path / "activity.json"))
+    client = TestClient(create_app())
+    ActivityLog.get().add("search", "Movie: Test", grabs=[{"title": "Test", "token": "abc"}])
+    event = client.get("/api/activity").json()[0]
+
+    response = client.post("/api/activity/delete", json={"ts": event["ts"], "title": event["title"]})
+
+    assert response.status_code == 200
+    assert response.json()["deleted"] is True
+    assert client.get("/api/activity").json() == []

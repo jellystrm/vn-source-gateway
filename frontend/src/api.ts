@@ -145,6 +145,7 @@ export const getHealth       = ()  => get<Record<string, HealthResult>>('/api/he
 export const getConfig       = ()  => get<Config>('/api/config')
 export const getPipeline     = ()  => get<PipelineJob[]>('/api/pipeline')
 export const getActivity     = ()  => get<ActivityEvent[]>('/api/activity')
+export const deleteActivity  = (ts: number, title: string) => post<{ status: string; deleted: boolean }>('/api/activity/delete', { ts, title })
 export const sourceTest      = (p: SourceTestRequest) => post<Record<string, SourceResult>>('/api/source-test', p)
 export const testGrabber     = (p: SourceTestRequest) => post<{ status: string; count: number; results: string[] }>('/api/test-grabber', p)
 export const testIndexer     = (p: SourceTestRequest) => post<{ status: string; count: number; results: string[]; url: string; key_required: boolean }>('/api/test-indexer', p)
