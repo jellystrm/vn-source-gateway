@@ -113,7 +113,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { authLogout, getPipeline, getActivity, UnauthorizedError, type PipelineJob, type ActivityEvent } from './api'
+import { authLogout, getPipeline, getActivity, type PipelineJob, type ActivityEvent } from './api'
 
 const route  = useRoute()
 const router = useRouter()
@@ -149,16 +149,10 @@ const pageTitle = computed(() => {
   return 'Deceptarr'
 })
 
-/** Redirect to /login via router (soft nav, no hard reload) on 401. */
-function handleUnauthorized(e: unknown) {
-  if (e instanceof UnauthorizedError) {
-    localStorage.removeItem('deceptarr_user')
-    router.replace('/login')
-  }
-}
-
-async function loadJobs()   { try { jobs.value   = await getPipeline() } catch (e) { handleUnauthorized(e) } }
-async function loadEvents() { try { events.value = await getActivity() } catch (e) { handleUnauthorized(e) } }
+// Polling errors are silenced — the router guard handles session-expiry redirects
+// on the next navigation. Do NOT redirect from here (causes post-login loop).
+async function loadJobs()   { try { jobs.value   = await getPipeline() } catch {} }
+async function loadEvents() { try { events.value = await getActivity() } catch {} }
 
 let timer: ReturnType<typeof setInterval>
 
