@@ -288,13 +288,17 @@ class Settings:
         if not raw_public:
             raw_public = _detect_public_base_url(radarr_url, sonarr_url, jellyfin_url, ui_port)
 
-        # ── TORZNAB_API_KEY: persistent random key from state file ─────────────
-        raw_torznab_key = str(_file_value(file_data, "torznab_api_key", "")).strip()
+        # ── TORZNAB_API_KEY: env → file → auto-generate ────────────────────────
+        raw_torznab_key = os.getenv("TORZNAB_API_KEY", "").strip()
+        if not raw_torznab_key:
+            raw_torznab_key = str(_file_value(file_data, "torznab_api_key", "")).strip()
         if not raw_torznab_key:
             raw_torznab_key = _generate_torznab_key()
 
-        # ── download_root: derive from Radarr/Sonarr settings ───────────────────
-        download_root = _file_value(file_data, "download_root", "")
+        # ── download_root: env → file → default ────────────────────────────────
+        download_root = os.getenv("DOWNLOAD_ROOT", "").strip()
+        if not download_root:
+            download_root = str(_file_value(file_data, "download_root", ""))
         if not download_root:
             download_root = "/downloads"
 
@@ -311,28 +315,42 @@ class Settings:
         # ── ffmpeg_path: only from file (no env fallback) ───────────────────────
         ffmpeg_path = str(_file_value(file_data, "ffmpeg_path", "")).strip()
 
-        # ── hls_template_sources and source_order ─────────────────────────────────
-        hls_template_sources = _file_value(file_data, "hls_template_sources", [])
-        if not isinstance(hls_template_sources, list):
-            hls_template_sources = []
-        source_order = _file_value(file_data, "source_order", ["kkphim", "ophim", "nguonc"])
-        if not isinstance(source_order, list):
-            source_order = ["kkphim", "ophim", "nguonc"]
+        # ── hls_template_sources: HLS_TEMPLATE_SOURCES_JSON env → file ───────────
+        raw_hls_env = os.getenv("HLS_TEMPLATE_SOURCES_JSON", "").strip()
+        if raw_hls_env:
+            try:
+                env_templates = json.loads(raw_hls_env)
+                hls_template_sources = env_templates if isinstance(env_templates, list) else []
+            except Exception:
+                hls_template_sources = []
+        else:
+            hls_template_sources = _file_value(file_data, "hls_template_sources", [])
+            if not isinstance(hls_template_sources, list):
+                hls_template_sources = []
+
+        # ── source_order: SOURCE_ORDER env (comma-sep) → file ──────────────────
+        raw_order_env = os.getenv("SOURCE_ORDER", "").strip()
+        if raw_order_env:
+            source_order: list[str] = [s.strip() for s in raw_order_env.split(",") if s.strip()]
+        else:
+            source_order = _file_value(file_data, "source_order", ["kkphim", "ophim", "nguonc"])
+            if not isinstance(source_order, list):
+                source_order = ["kkphim", "ophim", "nguonc"]
 
         return Settings(
             radarr_url=radarr_url,
-            radarr_api_key=str(_file_value(file_data, "radarr_api_key", "")),
+            radarr_api_key=str(_value(file_data, "radarr_api_key", "RADARR_API_KEY", "")),
             sonarr_url=sonarr_url,
-            sonarr_api_key=str(_file_value(file_data, "sonarr_api_key", "")),
+            sonarr_api_key=str(_value(file_data, "sonarr_api_key", "SONARR_API_KEY", "")),
             jellyfin_url=jellyfin_url,
-            jellyfin_api_key=str(_file_value(file_data, "jellyfin_api_key", "")),
+            jellyfin_api_key=str(_value(file_data, "jellyfin_api_key", "JELLYFIN_API_KEY", "")),
             download_root=str(download_root),
-            movie_strm_root=str(_file_value(file_data, "movie_strm_root", "/movies")),
-            series_strm_root=str(_file_value(file_data, "series_strm_root", "/shows")),
-            state_path=str(_file_value(file_data, "state_path", "/config/state.json")),
+            movie_strm_root=str(_value(file_data, "movie_strm_root", "MOVIE_STRM_ROOT", "/movies")),
+            series_strm_root=str(_value(file_data, "series_strm_root", "SERIES_STRM_ROOT", "/shows")),
+            state_path=str(_value(file_data, "state_path", "STATE_PATH", "/config/state.json")),
             config_path=config_path,
             ui_enabled=_bool_value(file_data, "ui_enabled", "UI_ENABLED", True),
-            ui_host=str(_file_value(file_data, "ui_host", "0.0.0.0")),
+            ui_host=str(_value(file_data, "ui_host", "UI_HOST", "0.0.0.0")),
             ui_port=ui_port,
             poll_interval_seconds=_int_value(file_data, "poll_interval_seconds", "POLL_INTERVAL_SECONDS", 300),
             max_items_per_poll=_int_value(file_data, "max_items_per_poll", "MAX_ITEMS_PER_POLL", 20),
@@ -341,19 +359,19 @@ class Settings:
             worker_enabled=_bool_value(file_data, "worker_enabled", "WORKER_ENABLED", True),
             movie_enabled=_bool_value(file_data, "movie_enabled", "MOVIE_ENABLED", True),
             series_enabled=_bool_value(file_data, "series_enabled", "SERIES_ENABLED", True),
-            default_output_mode=str(_file_value(file_data, "default_output_mode", "strm")),
+            default_output_mode=str(_value(file_data, "default_output_mode", "DEFAULT_OUTPUT_MODE", "strm")),
             expose_both_modes=_bool_value(file_data, "expose_both_modes", "EXPOSE_BOTH_MODES", False),
             torznab_api_key=raw_torznab_key,
             public_base_url=raw_public,
-            qb_username=str(_file_value(file_data, "qb_username", "admin")),
-            qb_password=str(_file_value(file_data, "qb_password", "adminadmin")),
-            tmdb_api_key=str(_file_value(file_data, "tmdb_api_key", "")),
+            qb_username=str(_value(file_data, "qb_username", "QB_USERNAME", "admin")),
+            qb_password=str(_value(file_data, "qb_password", "QB_PASSWORD", "adminadmin")),
+            tmdb_api_key=str(_value(file_data, "tmdb_api_key", "TMDB_API_KEY", "")),
             jellyfin_scan_after_strm=_bool_value(file_data, "jellyfin_scan_after_strm", "JELLYFIN_SCAN_AFTER_STRM", False),
-            download_container=str(_file_value(file_data, "download_container", "mkv")),
-            import_mode=str(_file_value(file_data, "import_mode", "Move")),
+            download_container=str(_value(file_data, "download_container", "DOWNLOAD_CONTAINER", "mkv")),
+            import_mode=str(_value(file_data, "import_mode", "IMPORT_MODE", "Move")),
             ffmpeg_path=ffmpeg_path,
             ffmpeg_extra_args=ffmpeg_extra_args,
-            log_level=str(_file_value(file_data, "log_level", "INFO")),
+            log_level=str(_value(file_data, "log_level", "LOG_LEVEL", "INFO")),
             job_detail_retention_hours=_int_value(file_data, "job_detail_retention_hours", "JOB_DETAIL_RETENTION_HOURS", 24),
             server_labels=_list_value(file_data, "server_labels", "SERVER_LABELS", ["ViệtSub", "Lồng Tiếng"]),
             torznab_group_sources=_bool_value(file_data, "torznab_group_sources", "TORZNAB_GROUP_SOURCES", False),

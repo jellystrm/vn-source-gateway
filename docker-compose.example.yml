@@ -1,48 +1,21 @@
 # Production compose — single image, backend serves pre-built Vue SPA.
+# Copy to docker-compose.yml, fill in your values, then: docker compose up -d
+# All env vars are documented in .env.example
 
 services:
   deceptarr:
-    image: deceptarr:latest
+    image: ghcr.io/jellystrm/deceptarr:latest
     container_name: deceptarr
     restart: unless-stopped
-    environment:
-      # Only TMDB_API_KEY is required (get free at themoviedb.org)
-      - TMDB_API_KEY=${TMDB_API_KEY:-}
-      
-      # Optional: Override auto-detected service URLs (usually not needed)
-      # - PUBLIC_BASE_URL=http://localhost:8765
-      
-      # Optional: Override auto-generated Torznab API key
-      # - TORZNAB_API_KEY=${TORZNAB_API_KEY:-deceptarr}
-      
-      # Optional: Server labels for differentiating releases
-      # - SERVER_LABELS=ViệtSub,Lồng Tiếng
-      
-      # Optional: Output settings
-      # - DEFAULT_OUTPUT_MODE=strm
-      # - EXPOSE_BOTH_MODES=true
-      # - DOWNLOAD_CONTAINER=mkv
-      
-      # Optional: Polling settings
-      # - POLL_INTERVAL_SECONDS=300
-      
-      # Optional: Log level
-      # - LOG_LEVEL=INFO
-      
-      # Optional: UI port (default 8765)
-      # - UI_PORT=${UI_PORT:-8765}
-    volumes:
-      # Config directory - all settings stored here
-      - ./config:/config
-      
-      # Download folder - must match Radarr/Sonarr download path
-      - ./downloads:/downloads
-      
-      # Movie/Series library paths - must match Jellyfin library paths
-      - ./movies:/movies
-      - ./shows:/shows
+    env_file:
+      - .env                          # copy .env.example → .env and customise
     ports:
-      - "8765:8765"
+      - "${UI_PORT:-8765}:${UI_PORT:-8765}"
+    volumes:
+      - ./config:/config              # settings + state + activity log
+      - ./downloads:/downloads        # must match Radarr/Sonarr download path
+      - ./movies:/movies              # must match Jellyfin movie library path
+      - ./shows:/shows                # must match Jellyfin series library path
     networks:
       - media
 
