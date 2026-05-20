@@ -80,6 +80,20 @@ class TestScoreItemTv:
         score = score_item(item, "Test Series", None, 2022, "tv", 1, tmdb_single_season)
         assert score < 0
 
+    def test_live_action_descriptor_does_not_reject_matching_tv(self):
+        tmdb = TmdbSeriesInfo(series_year=2023, season_years={1: 2023})
+        item = make_item(
+            name="One Piece Live Action (Phan 1)",
+            origin_name="One Piece (Season 1)",
+            kind="series",
+            year=2023,
+            tmdb_id=None,
+            episode_total=8,
+            episode_current="8",
+        )
+        score = score_item(item, "One Piece", None, 2023, "tv", 1, tmdb)
+        assert score >= 400
+
 
 # ── detect_season ─────────────────────────────────────────────────────────────
 

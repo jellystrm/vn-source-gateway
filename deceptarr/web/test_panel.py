@@ -24,6 +24,10 @@ _RESOLVER_JS = r"""
       tmdb_id: parseInt(tid),
       media_type: document.getElementById('sr-type').value,
     };
+    var title = (document.getElementById('sr-title').value || '').trim();
+    var year = (document.getElementById('sr-year').value || '').trim();
+    if (title) payload.title = title;
+    if (year) payload.year = parseInt(year);
     if (payload.media_type === 'tv') {
       payload.season  = parseInt(document.getElementById('sr-season').value) || 1;
       payload.episode = parseInt(document.getElementById('sr-ep').value)    || 1;
@@ -39,14 +43,23 @@ _RESOLVER_JS = r"""
       .then(function (d) {
         var rows = Object.keys(d).map(function (nm) {
           var r = d[nm], ok = r.status === 'ok';
+          var lines = (r.log || []).map(function (line) {
+            return '<div style="padding:1px 0">' + esc(line) + '</div>';
+          }).join('');
           var detail = ok
             ? '<a href="' + esc(r.url) + '" target="_blank" style="font-size:11px;word-break:break-all;color:var(--accent)">'
               + esc(r.url.slice(0, 120) + (r.url.length > 120 ? '…' : '')) + '</a>'
             : '<span style="color:#e06c75;font-size:11px">' + esc(r.message || 'Not found') + '</span>';
+          var logBlock = lines
+            ? '<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--muted);font-size:11px">trace log</summary>'
+              + '<div style="margin-top:6px;background:var(--input-bg);border:1px solid var(--border);border-radius:5px;padding:8px 10px;'
+              + 'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.4;color:var(--muted);white-space:normal">'
+              + lines + '</div></details>'
+            : '';
           return '<tr>'
             + '<td style="font-size:12px;padding:5px 10px;font-weight:500">' + esc(nm) + '</td>'
             + '<td style="padding:5px 8px"><span class="sdot ' + (ok ? 'ok' : 'err') + '"></span></td>'
-            + '<td style="padding:5px 10px">' + detail + '</td></tr>';
+            + '<td style="padding:5px 10px">' + detail + logBlock + '</td></tr>';
         });
         res.innerHTML = rows.length
           ? '<table class="jd-table"><tbody>' + rows.join('') + '</tbody></table>'
@@ -177,6 +190,14 @@ def test_panel(config: dict[str, Any]) -> str:
       <div class="field">
         <label class="field-label">TMDb ID</label>
         <input id="sr-tmdb" type="number" placeholder="27205 (Inception) / 1396 (Breaking Bad)">
+      </div>
+      <div class="field">
+        <label class="field-label">Title Override</label>
+        <input id="sr-title" placeholder="Optional when TMDB key is empty">
+      </div>
+      <div class="field">
+        <label class="field-label">Year</label>
+        <input id="sr-year" type="number" placeholder="2010">
       </div>
       <div class="field">
         <label class="field-label">Media Type</label>

@@ -10,6 +10,7 @@ _META_TOKENS = {
     "tap", "phim", "le", "bo", "episode", "ep", "ss", "season", "phan",
     "the", "a", "an", "is", "of", "and", "or", "vostfr", "sub", "dual",
     "multi", "web", "dl",
+    "live", "action",
 }
 
 _VI_PATTERN = re.compile(

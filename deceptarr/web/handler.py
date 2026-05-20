@@ -400,31 +400,61 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
             media_type = str(params.get("media_type", "movie"))
             season = int(params.get("season", 1) or 1)
             episode = int(params.get("episode", 1) or 1)
+            title = str(params.get("title") or "").strip()
+            year_raw = params.get("year")
+            year = int(year_raw) if year_raw else None
+            test_log: list[str] = [
+                f"input: media_type={media_type}, tmdb_id={tmdb_id}, title={title!r}, year={year}, season={season}, episode={episode}",
+            ]
 
             from deceptarr.sources import build_sources
+            from deceptarr.adapters.tmdb import TmdbClient
             from deceptarr.domain.models import MovieWanted, EpisodeWanted
+            if tmdb_id and settings.tmdb_api_key:
+                tmdb = TmdbClient(settings.tmdb_api_key)
+                if media_type == "movie":
+                    info = tmdb.get_movie_info(tmdb_id)
+                    if info:
+                        title = title or info.title or ""
+                        year = year or info.series_year or None
+                        test_log.append(f"TMDB movie metadata: title={info.title!r}, year={info.series_year}")
+                    else:
+                        test_log.append("TMDB movie metadata lookup returned nothing")
+                else:
+                    info = tmdb.get_series_info(tmdb_id)
+                    title = title or info.title or ""
+                    year = year or info.series_year or None
+                    test_log.append(
+                        f"TMDB series metadata: title={info.title!r}, year={info.series_year}, "
+                        f"seasons={info.total_seasons}, episodes={info.total_episodes}"
+                    )
+            elif tmdb_id:
+                test_log.append("TMDB API key is not configured; add Title/Year manually or configure TMDB for ID-only tests")
+
             sources = build_sources(settings.hls_template_sources, tmdb_api_key=settings.tmdb_api_key)
             results: dict[str, dict] = {}
             for source_name, source in sources.items():
                 try:
                     if media_type == "movie":
                         wanted: MovieWanted | EpisodeWanted = MovieWanted(
-                            radarr_id=0, title="", year=None, tmdb_id=tmdb_id, imdb_id=None
+                            radarr_id=0, title=title, year=year, tmdb_id=tmdb_id, imdb_id=None
                         )
                         hit = source.resolve_movie(wanted)  # type: ignore[arg-type]
                     else:
                         wanted = EpisodeWanted(
-                            sonarr_episode_id=0, series_id=0, series_title="", episode_title="",
-                            year=None, tmdb_id=tmdb_id, tvdb_id=None, imdb_id=None,
+                            sonarr_episode_id=0, series_id=0, series_title=title, episode_title="",
+                            year=year, tmdb_id=tmdb_id, tvdb_id=None, imdb_id=None,
                             season_number=season, episode_number=episode,
                         )
                         hit = source.resolve_episode(wanted)  # type: ignore[arg-type]
+                    source_log = test_log + list(getattr(source, "_last_log", []))
                     if hit:
-                        results[source_name] = {"status": "ok", "url": hit.hls_url}
+                        results[source_name] = {"status": "ok", "url": hit.hls_url, "log": source_log}
                     else:
-                        results[source_name] = {"status": "error", "message": "Not found"}
+                        results[source_name] = {"status": "error", "message": "Not found", "log": source_log}
                 except Exception as exc:
-                    results[source_name] = {"status": "error", "message": str(exc)[:200]}
+                    source_log = test_log + list(getattr(source, "_last_log", [])) + [f"exception: {exc}"]
+                    results[source_name] = {"status": "error", "message": str(exc)[:200], "log": source_log}
             self._send_json(results)
 
         def _read_form(self) -> dict[str, str]:
