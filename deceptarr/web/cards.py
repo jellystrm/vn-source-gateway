@@ -186,19 +186,24 @@ function render(){
   }).join('');
   sync();
 }
+function rBtn(label,onclick,dis){
+  var base='background:none;border:none;color:var(--muted);font-size:15px;line-height:1;cursor:pointer;padding:1px 5px;border-radius:3px;display:block;font-family:inherit';
+  var d=dis?';opacity:0.18;cursor:default':'';
+  return '<button type="button" '+(dis?'disabled ':'')+' onclick="'+onclick+'" style="'+base+d+'">'+label+'</button>';
+}
+function rBtns(oi,n){
+  return '<div style="display:flex;flex-direction:column;gap:0">'+rBtn('↑','oUp('+oi+')',oi===0)+rBtn('↓','oDn('+oi+')',oi>=n-1)+'</div>';
+}
 function builtinRow(name,oi){
   var n=ORDER.length;
-  return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border)">'
-    +'<div style="min-width:20px;text-align:center;font-size:11px;color:var(--muted)">'+(oi+1)+'</div>'
-    +'<div style="display:flex;flex-direction:column;gap:2px">'
-    +'<button type="button" onclick="oUp('+oi+')" '+(oi===0?'disabled':'')+' style="padding:0 4px;font-size:12px;line-height:1.4;cursor:pointer">↑</button>'
-    +'<button type="button" onclick="oDn('+oi+')" '+(oi===n-1?'disabled':'')+' style="padding:0 4px;font-size:12px;line-height:1.4;cursor:pointer">↓</button>'
-    +'</div>'
+  return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:6px;margin-bottom:6px">'
+    +'<span style="min-width:14px;font-size:11px;color:var(--muted);text-align:center;flex-shrink:0">'+(oi+1)+'</span>'
+    +rBtns(oi,n)
     +'<div style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
-    +'<span style="font-weight:500;font-size:14px">'+esc(name)+'</span>'
+    +'<span style="font-weight:600;font-size:14px">'+esc(name)+'</span>'
     +'<span style="font-size:12px;color:var(--muted)">'+esc(BUILTIN[name].url)+'</span>'
-    +'<span style="background:rgba(99,179,237,0.15);color:#63b3ed;font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px">Built-in</span>'
     +'</div>'
+    +'<span style="background:rgba(99,179,237,0.12);color:#63b3ed;font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap;flex-shrink:0">Built-in</span>'
     +'</div>';
 }
 function sel(val,opts){
@@ -206,12 +211,9 @@ function sel(val,opts){
 }
 function customRow(s,si,oi){
   var n=ORDER.length;
-  return '<div style="display:flex;align-items:flex-start;gap:8px;padding:10px 0;border-bottom:1px solid var(--border)">'
-    +'<div style="min-width:20px;text-align:center;font-size:11px;color:var(--muted);padding-top:28px">'+(oi+1)+'</div>'
-    +'<div style="display:flex;flex-direction:column;gap:2px;padding-top:24px">'
-    +'<button type="button" onclick="oUp('+oi+')" '+(oi===0?'disabled':'')+' style="padding:0 4px;font-size:12px;line-height:1.4;cursor:pointer">↑</button>'
-    +'<button type="button" onclick="oDn('+oi+')" '+(oi===n-1?'disabled':'')+' style="padding:0 4px;font-size:12px;line-height:1.4;cursor:pointer">↓</button>'
-    +'</div>'
+  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:6px;margin-bottom:6px">'
+    +'<span style="min-width:14px;font-size:11px;color:var(--muted);text-align:center;flex-shrink:0;padding-top:30px">'+(oi+1)+'</span>'
+    +'<div style="padding-top:26px;flex-shrink:0">'+rBtns(oi,n)+'</div>'
     +'<div style="flex:1;min-width:0">'
     +'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px">'
     +'<div class="field" style="flex:1;min-width:140px"><label class="field-label">Name</label>'
