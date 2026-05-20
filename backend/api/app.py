@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .routers import actions, grab, manual_grab, qbittorrent, source_test, torznab
+from .routers import actions, grab, manual_grab, pipeline, qbittorrent, source_test, torznab
 
 _DIST = pathlib.Path(__file__).parent.parent.parent / "dist"
 
@@ -21,6 +21,7 @@ def create_app() -> FastAPI:
     app.include_router(actions.router)
     app.include_router(source_test.router)
     app.include_router(manual_grab.router)
+    app.include_router(pipeline.router)
 
     if _DIST.is_dir():
         app.mount("/", StaticFiles(directory=str(_DIST), html=True), name="spa")
