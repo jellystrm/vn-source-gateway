@@ -58,7 +58,7 @@
               <option value="tv">TV Series</option>
             </select>
           </div>
-          <div class="field wide">
+          <div class="field">
             <label>Title</label>
             <input v-model="title" class="input" :placeholder="defaults.title" />
           </div>
@@ -376,7 +376,6 @@ onMounted(() => runHealth(false))
   gap: 14px;
 }
 .field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
-.field.wide { grid-column: span 2; }
 .field label { font-size: 12px; font-weight: 700; color: var(--text-2); }
 .input, .select {
   height: 38px;
@@ -431,10 +430,8 @@ onMounted(() => runHealth(false))
 .l-trace { color: var(--text-3); }
 @media (max-width: 900px) {
   .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .field.wide { grid-column: span 2; }
 }
 @media (max-width: 560px) {
-  .form-grid { grid-template-columns: 1fr; }
-  .field.wide { grid-column: span 1; }
+  .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
