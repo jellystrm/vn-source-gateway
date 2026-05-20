@@ -63,12 +63,14 @@
                 <span class="node-title">{{ season.label }}</span>
                 <span class="node-meta">{{ season.count }} tasks</span>
               </summary>
-              <div class="tree-children">
-                <details v-for="episode in season.episodes" :key="episode.key" class="tree-node episode-node" open>
+              <div class="tree-children compact-children">
+                <details v-for="episode in season.episodes" :key="episode.key" class="tree-node episode-node">
                   <summary>
                     <span class="chev"></span>
                     <span class="node-title">{{ episode.label }}</span>
                     <span class="node-meta">{{ episode.jobs.length }} tasks</span>
+                    <span :class="['pill', statusPill(episode.status)]">{{ episode.status }}</span>
+                    <span class="episode-progress">{{ episode.progress }}%</span>
                   </summary>
                   <div class="tree-children">
                     <JobRow v-for="job in episode.jobs" :key="job.id" :job="job" @act="act" />
@@ -93,7 +95,7 @@
 import { computed, defineComponent, h, onMounted, onUnmounted, ref, type PropType } from 'vue'
 import { getPipeline, jobAction, bulkAction, type PipelineJob } from '../api'
 
-interface EpisodeGroup { key: string; label: string; jobs: PipelineJob[] }
+interface EpisodeGroup { key: string; label: string; jobs: PipelineJob[]; status: string; progress: number }
 interface SeasonGroup { key: string; label: string; episodes: EpisodeGroup[]; count: number }
 interface DownloadGroup {
   key: string
@@ -194,6 +196,8 @@ const downloadGroups = computed<DownloadGroup[]>(() => {
         key: `${key}:s${season}:e${episode}`,
         label: episode ? `Episode ${episode}` : 'Season pack',
         jobs: sortJobs(epJobs),
+        status: aggregateStatus(epJobs),
+        progress: Math.round((epJobs.reduce((sum, job) => sum + job.progress, 0) / Math.max(epJobs.length, 1)) * 100),
       }))
       return {
         key: `${key}:s${season}`,
@@ -282,6 +286,10 @@ onUnmounted(() => clearInterval(timer))
   grid-template-columns: 18px minmax(160px, 1fr) auto;
   padding: 9px 12px;
 }
+.episode-node > summary {
+  grid-template-columns: 18px minmax(160px, 1fr) auto auto auto;
+  padding: 6px 10px;
+}
 .chev::before {
   content: "›";
   display: inline-block;
@@ -308,13 +316,29 @@ details[open] > summary .chev::before { transform: rotate(90deg); }
   border-left: 1px solid var(--border);
   padding: 0 12px 10px;
 }
+.compact-children {
+  padding-bottom: 6px;
+}
+.episode-node {
+  border-bottom: 0;
+}
+.episode-node > summary:hover {
+  background: rgba(255,255,255,.025);
+}
+.episode-progress {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  min-width: 38px;
+  text-align: right;
+}
 .job-row {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(180px, 260px) auto;
   align-items: center;
   gap: 14px;
-  padding: 9px 10px;
-  margin-top: 7px;
+  padding: 7px 9px;
+  margin-top: 5px;
   background: rgba(255,255,255,.025);
   border: 1px solid var(--border);
   border-radius: 7px;
@@ -343,6 +367,7 @@ details[open] > summary .chev::before { transform: rotate(90deg); }
 @media (max-width: 900px) {
   .tree-node > summary { grid-template-columns: 18px auto minmax(120px, 1fr) auto; }
   .tree-node > summary .pill { display: none; }
+  .episode-node > summary { grid-template-columns: 18px minmax(120px, 1fr) auto auto; }
   .job-row { grid-template-columns: 1fr; }
   .job-actions { justify-content: flex-start; }
 }
