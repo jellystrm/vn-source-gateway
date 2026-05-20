@@ -4,6 +4,7 @@ import hashlib
 import re
 import threading
 import time
+import unicodedata
 from email.utils import formatdate
 from html import escape as xml_escape
 
@@ -15,12 +16,20 @@ from backend.infrastructure.activity import ActivityLog
 from backend.infrastructure.config import Settings
 
 # ── Source availability cache ────────────────────────────────────────────────
-# key → (monotonic_ts, available_source_names | None)
+# key → (monotonic_ts, {source_name: [matched_server_labels]} | None)
 # None means the check timed out / errored → caller should fall back to all sources.
-_src_cache: dict[str, tuple[float, list[str] | None]] = {}
+_src_cache: dict[str, tuple[float, dict[str, list[str]] | None]] = {}
 _src_cache_lock = threading.Lock()
 _SRC_CACHE_TTL = 300.0   # 5 minutes
 _SRC_CHECK_TIMEOUT = 6.0  # per-source probe timeout (seconds)
+
+
+def _norm_label(s: str) -> str:
+    """Lowercase + strip diacritics for fuzzy server label matching."""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", s.lower())
+        if unicodedata.category(c) != "Mn"
+    )
 
 
 def _available_sources(
@@ -31,34 +40,41 @@ def _available_sources(
     tvdb_id: int | None,
     season: int | None,
     episode: int | None,
-) -> list[str] | None:
-    """Probe all configured sources in parallel and return those that have the content.
+) -> dict[str, list[str]] | None:
+    """Probe all configured sources in parallel.
 
     Return values:
-    - ``[source, ...]``  — sources confirmed to have the content (may be empty list
-                           if all sources completed but none found anything).
-    - ``None``           — at least one probe timed out; caller should fall back to
-                           the full source_order so we don't silently hide content.
+    - ``{source: [server_labels, ...]}`` — for each source that has the content,
+       lists which configured ``server_labels`` are actually present on that source.
+       An empty dict means all sources completed but none found the content.
+    - ``None`` — at least one probe timed out with no results; caller should fall
+       back to all sources × all labels so we don't silently hide content.
+
+    The server-label list for a source may contain all configured labels when the
+    source has content but its server names don't match any label (fallback: show
+    all options rather than hiding content).
 
     Results are cached for 5 minutes at season-level granularity so all per-episode
     requests inside the same season share a single round of HTTP checks.
     """
     if not settings.source_order:
-        return []
+        return {}
 
     # Can't verify without a real title (test/caps queries, unresolved IDs)
     placeholder = re.match(r"^(TMDB|TVDB|VN Source)\s*\d*$", title.strip())
     if not title or placeholder:
         return None  # fall back: show all sources
 
+    server_labels: list[str] = settings.server_labels if settings.server_labels else [""]
+
     id_part = str(tmdb_id or tvdb_id or re.sub(r"[^a-z0-9]", "", title.lower())[:40])
     cache_key = f"{kind}:{id_part}:{season or ''}"
 
     now = time.monotonic()
     with _src_cache_lock:
-        hit = _src_cache.get(cache_key)
-        if hit and now - hit[0] < _SRC_CACHE_TTL:
-            return hit[1]
+        cached = _src_cache.get(cache_key)
+        if cached and now - cached[0] < _SRC_CACHE_TTL:
+            return cached[1]
 
     from backend.sources import build_sources
 
@@ -66,16 +82,17 @@ def _available_sources(
     check_season  = season  or 1
     check_episode = episode or 1
 
-    found: list[str] = []
-    found_lock = threading.Lock()
-    completed: set[str] = set()
-    completed_lock = threading.Lock()
+    # Results per source:
+    #   list[str] → matched server_labels (may be empty if content not found)
+    #   None      → probe errored/timed out
+    probe_results: dict[str, list[str] | None] = {}
+    results_lock = threading.Lock()
 
     def probe(source_name: str) -> None:
         source_obj = sources_map.get(source_name)
         if not source_obj:
-            with completed_lock:
-                completed.add(source_name)
+            with results_lock:
+                probe_results[source_name] = []
             return
         try:
             if kind == "movie":
@@ -83,7 +100,7 @@ def _available_sources(
                     radarr_id=0, title=title, year=None,
                     tmdb_id=tmdb_id, imdb_id=None,
                 )
-                result = source_obj.resolve_movie(wanted)  # type: ignore[arg-type]
+                hits = source_obj.resolve_movie_all(wanted)  # type: ignore[arg-type]
             else:
                 wanted = EpisodeWanted(
                     sonarr_episode_id=0, series_id=0, series_title=title,
@@ -91,15 +108,37 @@ def _available_sources(
                     tmdb_id=tmdb_id, tvdb_id=tvdb_id, imdb_id=None,
                     season_number=check_season, episode_number=check_episode,
                 )
-                result = source_obj.resolve_episode(wanted)  # type: ignore[arg-type]
-            if result:
-                with found_lock:
-                    found.append(source_name)
+                hits = source_obj.resolve_episode_all(wanted)  # type: ignore[arg-type]
+
+            if not hits:
+                with results_lock:
+                    probe_results[source_name] = []
+                return
+
+            # No server label distinction → content found is enough
+            if server_labels == [""]:
+                with results_lock:
+                    probe_results[source_name] = [""]
+                return
+
+            # Match each configured label against the actual server names returned
+            hit_server_names = [h.server_name or "" for h in hits if h.server_name]
+            matched: list[str] = []
+            for label in server_labels:
+                kw = _norm_label(label)
+                if any(kw and kw in _norm_label(sname) for sname in hit_server_names):
+                    matched.append(label)
+
+            # Fallback: source has the content but its server names don't match any
+            # configured label → show all labels rather than silently hiding content.
+            if not matched:
+                matched = list(server_labels)
+
+            with results_lock:
+                probe_results[source_name] = matched
         except Exception:
-            pass
-        finally:
-            with completed_lock:
-                completed.add(source_name)
+            with results_lock:
+                probe_results[source_name] = None  # error → treated like timeout
 
     threads = [
         threading.Thread(target=probe, args=(name,), daemon=True)
@@ -111,25 +150,30 @@ def _available_sources(
         t.join(timeout=_SRC_CHECK_TIMEOUT)
 
     any_timeout = any(t.is_alive() for t in threads)
-    # Preserve source_order ordering
-    ordered = [s for s in settings.source_order if s in found]
+
+    # Build available dict preserving source_order
+    available: dict[str, list[str]] = {
+        name: probe_results[name]  # type: ignore[assignment]
+        for name in settings.source_order
+        if probe_results.get(name)  # non-None and non-empty
+    }
 
     # If any source timed out and we found nothing, we can't trust the result —
-    # return None so the caller falls back to showing all sources.
-    result: list[str] | None
-    if any_timeout and not ordered:
-        result = None
+    # return None so the caller falls back to showing all sources × all labels.
+    final: dict[str, list[str]] | None
+    if any_timeout and not available:
+        final = None
     else:
-        result = ordered
+        final = available
 
     with _src_cache_lock:
-        _src_cache[cache_key] = (now, result)
+        _src_cache[cache_key] = (now, final)
         if len(_src_cache) > 500:   # prune stale entries
             cutoff = now - _SRC_CACHE_TTL
             for k in [k for k, v in _src_cache.items() if v[0] < cutoff]:
                 _src_cache.pop(k, None)
 
-    return result
+    return final
 
 
 def caps_response() -> str:
@@ -226,28 +270,46 @@ def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[Gate
     # Server labels: empty list means no server distinction (single label "")
     server_labels: list[str] = settings.server_labels if settings.server_labels else [""]
 
-    # ── Source list: verify which sources actually have this content ───────────
-    # _available_sources() probes all configured sources in parallel (≤6 s).
-    # Returns None on timeout → fall back to showing all sources so we don't
-    # silently hide content that exists but was slow to respond.
+    # ── Source + server-label pairs: verify which sources have this content
+    #    and which server labels (ViệtSub / Lồng Tiếng / …) each source offers.
+    #
+    # _available_sources() probes all configured sources in parallel (≤6 s) using
+    # resolve_movie_all() / resolve_episode_all(), then matches each SourceHit's
+    # server_name against the configured server_labels.
+    #
+    # Returns:
+    #   dict {source: [labels]}  — sources that have the content and their matched labels
+    #   None                     — timeout / placeholder → fall back to all combinations
     if not settings.source_order:
         return []  # no sources configured
 
+    # src_server_pairs: ordered list of (source_name | None, server_label) to generate
+    src_server_pairs: list[tuple[str | None, str]]
+
     if settings.torznab_group_sources:
-        # Legacy grouped mode: skip verification, let grab service auto-select.
-        source_list: list[str | None] = [None]
+        # Legacy grouped mode: single auto-select entry per server_label.
+        src_server_pairs = [(None, lbl) for lbl in server_labels]
     else:
         verified = _available_sources(
             settings, title, kind, tmdb_id, tvdb_id, season, episode
         )
         if verified is None:
-            # Couldn't verify (timeout / placeholder title) → show all sources
-            source_list = list(settings.source_order)
+            # Couldn't verify (timeout / placeholder title) → show all combinations
+            src_server_pairs = [
+                (src, lbl)
+                for src in settings.source_order
+                for lbl in server_labels
+            ]
         elif not verified:
             # All sources completed and none have this content → empty feed
             return []
         else:
-            source_list = verified
+            # Only generate releases for (source, server_label) pairs that actually exist
+            src_server_pairs = [
+                (src, lbl)
+                for src, lbls in verified.items()
+                for lbl in lbls
+            ]
 
     # ── Season expansion: when season given but no specific episode,
     #    expand to per-episode results so Sonarr tracks each episode individually.
@@ -261,27 +323,26 @@ def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[Gate
 
     releases: list[GatewayRelease] = []
 
-    # ── Season pack items (at the top): one per (server_label × source × mode)
+    # ── Season pack items (at the top): one per (source × server_label × mode)
     if kind == "episode" and season is not None and episode is None:
-        for server_label in server_labels:
-            for source_name in source_list:
-                for mode in modes:
-                    releases.append(
-                        GatewayRelease(
-                            title=title,
-                            kind=kind,  # type: ignore[arg-type]
-                            output_mode=mode,
-                            source_name=source_name,
-                            query=q or title,
-                            year=year,
-                            tmdb_id=tmdb_id,
-                            imdb_id=imdb_id,
-                            tvdb_id=tvdb_id,
-                            season_number=season,
-                            episode_number=None,  # season pack marker
-                            server_label=server_label,
-                        )
+        for source_name, server_label in src_server_pairs:
+            for mode in modes:
+                releases.append(
+                    GatewayRelease(
+                        title=title,
+                        kind=kind,  # type: ignore[arg-type]
+                        output_mode=mode,
+                        source_name=source_name,
+                        query=q or title,
+                        year=year,
+                        tmdb_id=tmdb_id,
+                        imdb_id=imdb_id,
+                        tvdb_id=tvdb_id,
+                        season_number=season,
+                        episode_number=None,  # season pack marker
+                        server_label=server_label,
                     )
+                )
 
     # ── Per-episode items (sorted by episode first)
     for ep_num in episode_numbers:
@@ -291,25 +352,24 @@ def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[Gate
         # so at least one result is returned (needed for Sonarr indexer test).
         if kind == "episode" and ep_num is None and season is not None:
             continue  # season pack handled above; skip the placeholder
-        for server_label in server_labels:
-            for source_name in source_list:
-                for mode in modes:
-                    releases.append(
-                        GatewayRelease(
-                            title=title,
-                            kind=kind,  # type: ignore[arg-type]
-                            output_mode=mode,
-                            source_name=source_name,
-                            query=q or title,
-                            year=year,
-                            tmdb_id=tmdb_id,
-                            imdb_id=imdb_id,
-                            tvdb_id=tvdb_id,
-                            season_number=season,
-                            episode_number=ep_num,
-                            server_label=server_label,
-                        )
+        for source_name, server_label in src_server_pairs:
+            for mode in modes:
+                releases.append(
+                    GatewayRelease(
+                        title=title,
+                        kind=kind,  # type: ignore[arg-type]
+                        output_mode=mode,
+                        source_name=source_name,
+                        query=q or title,
+                        year=year,
+                        tmdb_id=tmdb_id,
+                        imdb_id=imdb_id,
+                        tvdb_id=tvdb_id,
+                        season_number=season,
+                        episode_number=ep_num,
+                        server_label=server_label,
                     )
+                )
     return releases
 
 
