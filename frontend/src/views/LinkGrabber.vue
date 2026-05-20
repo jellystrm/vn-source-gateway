@@ -13,7 +13,7 @@
       </div>
     </div>
 
-    <div v-if="!events.length" class="empty-state">
+    <div v-if="!grabEvents.length" class="empty-state">
       <h3>No activity yet</h3>
       <p>Start the worker or let Radarr / Sonarr hand queries off automatically once configured.</p>
     </div>
@@ -73,7 +73,7 @@
       </details>
 
       <div class="card-foot">
-        <span style="font-size:12.5px;color:var(--text-3)">{{ events.length }} events · {{ grabsCount }} with grabs</span>
+        <span style="font-size:12.5px;color:var(--text-3)">{{ grabEvents.length }} grab lists · {{ grabsCount }} links</span>
       </div>
     </div>
   </div>
@@ -81,6 +81,7 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, onUnmounted, ref, type PropType } from 'vue'
+import { useRouter } from 'vue-router'
 import { getActivity, manualGrab, type ActivityEvent, type GrabToken } from '../api'
 
 interface LinkOption {
@@ -127,10 +128,12 @@ const GrabActions = defineComponent({
 })
 
 const events = ref<ActivityEvent[]>([])
+const router = useRouter()
 let timer: ReturnType<typeof setInterval>
 
-const grabsCount = computed(() => events.value.filter(e => e.grabs.length > 0).length)
-const mediaGroups = computed(() => events.value.map(toMediaNode))
+const grabEvents = computed(() => events.value.filter(e => e.kind === 'search' && e.grabs.length > 0))
+const grabsCount = computed(() => grabEvents.value.reduce((sum, e) => sum + e.grabs.length, 0))
+const mediaGroups = computed(() => grabEvents.value.map(toMediaNode))
 
 async function load() {
   try { events.value = await getActivity() } catch {}
@@ -138,7 +141,7 @@ async function load() {
 
 async function grab(token: string, mode: string) {
   await manualGrab(token, mode)
-  await load()
+  await router.push('/downloads')
 }
 
 function toMediaNode(ev: ActivityEvent): MediaNode {
@@ -355,26 +358,26 @@ details[open] > summary .chev::before { transform: rotate(90deg); }
 }
 .grab-actions { display: flex; gap: 5px; }
 .grab-btn {
-  min-width: 58px;
+  min-width: 72px;
   font-size: 11px;
   font-weight: 800;
-  background: var(--teal-soft);
-  border: 1px solid var(--teal-line);
-  border-radius: 5px;
-  color: var(--teal);
-  padding: 4px 8px;
+  background: var(--accent);
+  border: 1px solid rgba(245,166,35,.55);
+  border-radius: 6px;
+  color: #15100a;
+  padding: 6px 10px;
   cursor: pointer;
-  transition: background .12s;
+  transition: filter .12s, transform .12s;
   white-space: nowrap;
   font-family: var(--font-sans);
 }
-.grab-btn:hover { background: rgba(94,224,189,.2); }
+.grab-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
 .grab-btn-dl {
   background: var(--surface-2);
-  border-color: var(--border-2);
-  color: var(--text-2);
+  border-color: var(--border-strong);
+  color: var(--text);
 }
-.grab-btn-dl:hover { background: var(--surface-3); color: var(--text); }
+.grab-btn-dl:hover { background: var(--surface-3); }
 @media (max-width: 900px) {
   .tree-node > summary { grid-template-columns: 18px auto minmax(120px, 1fr) auto; }
   .tree-node > summary .pill, .node-time { display: none; }
