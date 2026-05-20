@@ -45,6 +45,21 @@ def _live_action_episode(season: int = 1, ep: int = 1) -> EpisodeWanted:
     )
 
 
+def _one_piece_1999_episode(season: int = 1, ep: int = 1) -> EpisodeWanted:
+    return EpisodeWanted(
+        sonarr_episode_id=1,
+        series_id=1,
+        series_title="One Piece",
+        episode_title="I'm Luffy!",
+        year=1999,
+        tmdb_id=37854,
+        tvdb_id=None,
+        imdb_id=None,
+        season_number=season,
+        episode_number=ep,
+    )
+
+
 def _response(data: dict) -> MagicMock:
     resp = MagicMock()
     resp.status_code = 200
@@ -57,7 +72,16 @@ def _search_response(items: list[dict]) -> MagicMock:
     return _response({"status": "success", "items": items})
 
 
-def _detail_response(slug: str, *, name: str, original_name: str, episodes: list[dict], total: int = 1) -> MagicMock:
+def _detail_response(
+    slug: str,
+    *,
+    name: str,
+    original_name: str,
+    episodes: list[dict],
+    total: int = 1,
+    year: int | None = None,
+) -> MagicMock:
+    release_year = year or (2010 if total == 1 else 2008)
     return _response(
         {
             "status": "success",
@@ -70,7 +94,7 @@ def _detail_response(slug: str, *, name: str, original_name: str, episodes: list
                 "category": {
                     "3": {
                         "group": {"name": "Nam"},
-                        "list": [{"name": "2010" if total == 1 else "2008"}],
+                        "list": [{"name": str(release_year)}],
                     }
                 },
                 "episodes": episodes,
@@ -154,6 +178,7 @@ def test_uses_live_action_keyword_variant_for_new_tv_series():
         name="One Piece Live Action (Phan 1)",
         original_name="One Piece (Season 1)",
         total=8,
+        year=2023,
         episodes=[{"server_name": "Vietsub #1", "items": [{"name": "1", "m3u8": "https://cdn/op-live-s01e01.m3u8"}]}],
     )
     with patch.object(source.session, "get") as mock_get:
@@ -162,3 +187,28 @@ def test_uses_live_action_keyword_variant_for_new_tv_series():
     assert hit is not None
     assert hit.hls_url == "https://cdn/op-live-s01e01.m3u8"
     assert any("One Piece Live Action" in line for line in source._last_log)
+
+
+def test_tries_direct_slug_fallback_when_nguonc_search_omits_series():
+    source = _source()
+    movie_special = {
+        "name": "Dao Hai Tac 9",
+        "original_name": "One Piece Movie 9",
+        "slug": "dao-hai-tac-9",
+        "total_episodes": 1,
+        "current_episode": "FULL",
+    }
+    detail = _detail_response(
+        "one-piece",
+        name="One Piece",
+        original_name="Dao Hai Tac, Vua Hai Tac, OP",
+        total=2000,
+        year=1999,
+        episodes=[{"server_name": "Vietsub #1", "items": [{"name": "1", "m3u8": "https://cdn/op-1999-e01.m3u8"}]}],
+    )
+    with patch.object(source.session, "get") as mock_get:
+        mock_get.side_effect = [_search_response([movie_special]), detail]
+        hit = source.resolve_episode(_one_piece_1999_episode())
+    assert hit is not None
+    assert hit.hls_url == "https://cdn/op-1999-e01.m3u8"
+    assert any("direct slug fallback" in line for line in source._last_log)

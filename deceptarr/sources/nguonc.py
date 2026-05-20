@@ -16,6 +16,10 @@ from .base import Source
 log = logging.getLogger(__name__)
 
 
+def _slugify(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", _norm(text)).strip("-")
+
+
 class NguonCSource(Source):
     """Resolves HLS streams from phim.nguonc.com.
 
@@ -128,6 +132,49 @@ class NguonCSource(Source):
             self._trace("no search keywords; skipping search phase")
 
         checked = 0
+        seen_slugs: set[str] = set()
+
+        def _try_slug(slug: str, query: str, via: str = "") -> SourceHit | None:
+            nonlocal checked
+            if not slug or slug in seen_slugs:
+                return None
+            seen_slugs.add(slug)
+            detail = self._detail(slug)
+            if not detail:
+                return None
+            checked += 1
+            movie_node = self._normalize_item(detail.get("movie") or {})
+            detail_score = score_item(
+                movie_node,
+                query,
+                episode.tmdb_id,
+                episode.year,
+                "tv",
+                episode.season_number,
+                tmdb_info,
+            )
+            name = movie_node.get("name") or slug
+            if detail_score < 400:
+                self._trace(f"detail rejected: {name!r} slug={slug!r} score={detail_score} need>=400")
+                return None
+            detected = detect_season(
+                str(movie_node.get("name") or ""),
+                str(movie_node.get("origin_name") or ""),
+                _safe_int(movie_node.get("year")),
+                tmdb_info,
+                slug,
+            )
+            hit = self._episode_hls(detail, episode.season_number, episode.episode_number, detected, episode.server_label)
+            if hit:
+                suffix = f" via {via}" if via else ""
+                self._trace(
+                    f"S{episode.season_number:02d}E{episode.episode_number:02d} "
+                    f"from slug={slug!r} detected_season={detected} score={detail_score}{suffix}"
+                )
+                return hit
+            self._trace(f"episode not found in slug={slug!r} detected_season={detected} score={detail_score}")
+            return None
+
         for kw in keywords:
             for raw in self._search(kw):
                 item = self._normalize_item(raw)
@@ -145,26 +192,18 @@ class NguonCSource(Source):
                     continue
                 slug = str(item.get("slug") or "")
                 self._trace(f"search candidate accepted: {item.get('name')!r} slug={slug!r} score={score}")
-                detail = self._detail(slug)
-                if not detail:
-                    continue
-                checked += 1
-                movie_node = self._normalize_item(detail.get("movie") or {})
-                detected = detect_season(
-                    str(movie_node.get("name") or ""),
-                    str(movie_node.get("origin_name") or ""),
-                    _safe_int(movie_node.get("year")),
-                    tmdb_info,
-                    slug,
-                )
-                hit = self._episode_hls(detail, episode.season_number, episode.episode_number, detected, episode.server_label)
+                hit = _try_slug(slug, kw)
                 if hit:
-                    self._trace(
-                        f"S{episode.season_number:02d}E{episode.episode_number:02d} "
-                        f"from slug={slug!r} detected_season={detected}"
-                    )
                     return hit
-                self._trace(f"episode not found in slug={slug!r} detected_season={detected}")
+
+        for kw in keywords:
+            slug = _slugify(kw)
+            if not slug:
+                continue
+            self._trace(f"trying direct slug fallback: {slug!r} from keyword={kw!r}")
+            hit = _try_slug(slug, kw, via="direct slug fallback")
+            if hit:
+                return hit
 
         if not keywords:
             self._trace("no usable series title; provide Title/Year or configure TMDB key")
