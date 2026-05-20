@@ -234,8 +234,8 @@ class Settings:
     # ── Auth ───────────────────────────────────────────────────────────────────
     torznab_api_key: str = ""
     public_base_url: str = ""
-    qb_username: str = "admin"
-    qb_password: str = "adminadmin"
+    qb_username: str = ""
+    qb_password: str = ""
 
     # ── External ───────────────────────────────────────────────────────────────
     tmdb_api_key: str = ""
@@ -363,8 +363,8 @@ class Settings:
             expose_both_modes=_bool_value(file_data, "expose_both_modes", "EXPOSE_BOTH_MODES", False),
             torznab_api_key=raw_torznab_key,
             public_base_url=raw_public,
-            qb_username=str(_value(file_data, "qb_username", "QB_USERNAME", "admin")),
-            qb_password=str(_value(file_data, "qb_password", "QB_PASSWORD", "adminadmin")),
+            qb_username=str(_value(file_data, "qb_username", "QB_USERNAME", "")),
+            qb_password=str(_value(file_data, "qb_password", "QB_PASSWORD", "")),
             tmdb_api_key=str(_value(file_data, "tmdb_api_key", "TMDB_API_KEY", "")),
             jellyfin_scan_after_strm=_bool_value(file_data, "jellyfin_scan_after_strm", "JELLYFIN_SCAN_AFTER_STRM", False),
             download_container=str(_value(file_data, "download_container", "DOWNLOAD_CONTAINER", "mkv")),
