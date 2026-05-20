@@ -12,6 +12,17 @@ _RESOLVER_JS = r"""
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  function epsHtml(eps, found, total) {
+    var h = '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">Found '
+      + found + '/' + total + ' episodes</div>';
+    var links = eps.filter(function(e) { return e.url; }).map(function(e) {
+      return '<a href="' + esc(e.url) + '" target="_blank" '
+        + 'style="font-size:11px;color:var(--accent);margin-right:6px">E'
+        + String(e.num).padStart(2,'0') + '</a>';
+    }).join('');
+    return h + (links || '<span style="color:#e06c75;font-size:11px">No episodes found</span>');
+  }
+
   window.srToggle = function () {
     var tv = document.getElementById('sr-type').value === 'tv';
     document.getElementById('sr-tv-f').style.display = tv ? 'flex' : 'none';
@@ -29,11 +40,18 @@ _RESOLVER_JS = r"""
     if (title) payload.title = title;
     if (year) payload.year = parseInt(year);
     if (payload.media_type === 'tv') {
-      payload.season  = parseInt(document.getElementById('sr-season').value) || 1;
-      payload.episode = parseInt(document.getElementById('sr-ep').value)    || 1;
+      var sv = (document.getElementById('sr-season').value || '').trim();
+      var ev = (document.getElementById('sr-ep').value || '').trim();
+      var tv = (document.getElementById('sr-tvdb').value || '').trim();
+      if (sv) payload.season = parseInt(sv);
+      if (ev) payload.episode = parseInt(ev);
+      if (tv) payload.tvdb_id = parseInt(tv);
     }
+    var scanMsg = (payload.media_type === 'tv' && payload.season && !payload.episode)
+      ? 'Scanning all episodes of S' + String(payload.season).padStart(2,'0') + '…'
+      : 'Resolving…';
     var res = document.getElementById('sr-results');
-    res.innerHTML = '<p style="color:var(--muted);font-size:13px">Resolving…</p>';
+    res.innerHTML = '<p style="color:var(--muted);font-size:13px">' + scanMsg + '</p>';
     fetch('/api/source-test', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -47,13 +65,15 @@ _RESOLVER_JS = r"""
             return '<div style="padding:1px 0">' + esc(line) + '</div>';
           }).join('');
           var detail = ok
-            ? (r.urls || [{url:r.url}]).map(function (u, idx) {
-                var label = (u.server || u.name) ? '<span style="color:var(--muted);font-size:10px;margin-right:6px">'
-                  + esc([u.server, u.name].filter(Boolean).join(' / ')) + '</span>' : '';
-                return '<div style="padding:1px 0">' + label
-                  + '<a href="' + esc(u.url) + '" target="_blank" style="font-size:11px;word-break:break-all;color:var(--accent)">'
-                  + esc((idx + 1) + '. ' + u.url.slice(0, 120) + (u.url.length > 120 ? '…' : '')) + '</a></div>';
-              }).join('')
+            ? (r.episodes != null
+                ? epsHtml(r.episodes, r.found, r.total)
+                : (r.urls || [{url:r.url}]).map(function (u, idx) {
+                    var label = (u.server || u.name) ? '<span style="color:var(--muted);font-size:10px;margin-right:6px">'
+                      + esc([u.server, u.name].filter(Boolean).join(' / ')) + '</span>' : '';
+                    return '<div style="padding:1px 0">' + label
+                      + '<a href="' + esc(u.url) + '" target="_blank" style="font-size:11px;word-break:break-all;color:var(--accent)">'
+                      + esc((idx + 1) + '. ' + u.url.slice(0, 120) + (u.url.length > 120 ? '…' : '')) + '</a></div>';
+                  }).join(''))
             : '<span style="color:#e06c75;font-size:11px">' + esc(r.message || 'Not found') + '</span>';
           var logBlock = lines
             ? '<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--muted);font-size:11px">trace log</summary>'
@@ -211,14 +231,18 @@ def test_panel(config: dict[str, Any]) -> str:
           <option value="tv">TV Series</option>
         </select>
       </div>
-      <div id="sr-tv-f" style="display:none;flex-direction:row;gap:8px">
+      <div id="sr-tv-f" style="display:none;flex-direction:row;gap:8px;flex-wrap:wrap">
         <div class="field">
           <label class="field-label">Season</label>
-          <input id="sr-season" type="number" min="1" value="1" style="width:80px">
+          <input id="sr-season" type="number" min="1" placeholder="1" style="width:80px">
         </div>
         <div class="field">
           <label class="field-label">Episode</label>
-          <input id="sr-ep" type="number" min="1" value="1" style="width:80px">
+          <input id="sr-ep" type="number" min="1" placeholder="all" style="width:80px">
+        </div>
+        <div class="field">
+          <label class="field-label">TVDb ID</label>
+          <input id="sr-tvdb" type="number" placeholder="optional" style="width:110px">
         </div>
       </div>
     </div>
