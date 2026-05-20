@@ -25,7 +25,7 @@ def enqueue_from_url(settings: Settings, url: str, category: str = "vn-source", 
     job_id = hashlib.sha1(encode_release(release).encode("utf-8")).hexdigest()[:40]
     store = JobStore(settings.state_path)
     existing = store.get(job_id)
-    if existing and existing.status in {"queued", "running", "completed"}:
+    if existing and existing.status in {"queued", "running"}:
         return existing
     job = GatewayJob(
         job_id=job_id,

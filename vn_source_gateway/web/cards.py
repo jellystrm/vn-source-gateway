@@ -21,14 +21,38 @@ def _option(value: str, selected: object) -> str:
     return f'<option value="{_attr(value)}"{selected_attr}>{html.escape(value)}</option>'
 
 
-def _poll_schedule_fields(config: dict[str, Any]) -> str:
-    """Shared poll interval + max items row used by both Radarr and Sonarr cards."""
+def _poll_fields(prefix: str, config: dict[str, Any]) -> str:
+    """Collapsible poll-interval + max-items fields, toggled by a 'poll enabled' checkbox.
+
+    ``prefix`` is "movie" or "series" so the toggle JS ID is unique per card.
+    """
+    enabled_field = "movie_enabled" if prefix == "movie" else "series_enabled"
+    is_enabled = bool(config.get(enabled_field, False))
+    disabled = "" if is_enabled else " disabled"
+    opacity = "" if is_enabled else " style='opacity:.45;pointer-events:none'"
     return f"""
-        <div class="row">
-          <div class="field"><label class="field-label">Poll Interval (seconds)</label>
-            <input name="poll_interval_seconds" type="number" min="10" value="{_attr(config["poll_interval_seconds"])}"></div>
-          <div class="field"><label class="field-label">Max Items Per Poll</label>
-            <input name="max_items_per_poll" type="number" min="1" value="{_attr(config["max_items_per_poll"])}"></div>
+        <div class="checks" style="margin-bottom:10px">
+          <label class="check-item">
+            <input type="checkbox" name="{enabled_field}" id="chk-{prefix}-enabled"
+              {_checked(is_enabled)}
+              onchange="(function(c){{
+                var wrap=document.getElementById('poll-fields-{prefix}');
+                wrap.style.opacity=c.checked?'1':'0.45';
+                wrap.style.pointerEvents=c.checked?'':'none';
+                wrap.querySelectorAll('input,select').forEach(function(i){{i.disabled=!c.checked}});
+              }})(this)">
+            Poll {prefix}s
+          </label>
+        </div>
+        <div id="poll-fields-{prefix}"{opacity}>
+          <div class="row">
+            <div class="field"><label class="field-label">Poll Interval (seconds)</label>
+              <input name="poll_interval_seconds" type="number" min="10"{disabled}
+                value="{_attr(config["poll_interval_seconds"])}"></div>
+            <div class="field"><label class="field-label">Max Items Per Poll</label>
+              <input name="max_items_per_poll" type="number" min="1"{disabled}
+                value="{_attr(config["max_items_per_poll"])}"></div>
+          </div>
         </div>"""
 
 
@@ -37,7 +61,7 @@ def radarr_card(config: dict[str, Any]) -> str:
     <div class="card" id="radarr">
       <div class="card-header">
         <div><div class="card-title">Radarr</div>
-        <div class="card-desc">Movie manager — connection, polling schedule, and import</div></div>
+        <div class="card-desc">Movie manager — connection and polling</div></div>
       </div>
       <div class="card-body">
         <div class="row">
@@ -47,11 +71,7 @@ def radarr_card(config: dict[str, Any]) -> str:
             <input name="radarr_api_key" type="password" value="{_attr(config["radarr_api_key"])}"></div>
         </div>
         <hr class="sep">
-        {_poll_schedule_fields(config)}
-        <hr class="sep">
-        <div class="checks">
-          <label class="check-item"><input type="checkbox" name="movie_enabled" {_checked(config["movie_enabled"])}> Poll movies</label>
-        </div>
+        {_poll_fields("movie", config)}
       </div>
     </div>"""
 
@@ -61,7 +81,7 @@ def sonarr_card(config: dict[str, Any]) -> str:
     <div class="card" id="sonarr">
       <div class="card-header">
         <div><div class="card-title">Sonarr</div>
-        <div class="card-desc">Series manager — connection, polling schedule, and import</div></div>
+        <div class="card-desc">Series manager — connection and polling</div></div>
       </div>
       <div class="card-body">
         <div class="row">
@@ -71,11 +91,7 @@ def sonarr_card(config: dict[str, Any]) -> str:
             <input name="sonarr_api_key" type="password" value="{_attr(config["sonarr_api_key"])}"></div>
         </div>
         <hr class="sep">
-        {_poll_schedule_fields(config)}
-        <hr class="sep">
-        <div class="checks">
-          <label class="check-item"><input type="checkbox" name="series_enabled" {_checked(config["series_enabled"])}> Poll series</label>
-        </div>
+        {_poll_fields("series", config)}
       </div>
     </div>"""
 

@@ -291,6 +291,13 @@ details[open] .pipe-detail summary::before { transform: rotate(90deg); }
 }
 .jd-table tr:hover td { background: rgba(255,255,255,0.02); }
 .jd-table tr:last-child td { border-bottom: none; }
+/* Tree view — package rows and child rows */
+.jd-pkg-row { cursor: pointer; user-select: none; }
+.jd-pkg-row td { background: rgba(255,255,255,0.015); }
+.jd-pkg-row:hover td { background: rgba(255,255,255,0.045); }
+.jd-tree-arr { display: inline-block; width: 12px; text-align: center; cursor: pointer; }
+.jd-child-r td { background: rgba(0,0,0,0.18); }
+.jd-child-r:hover td { background: rgba(0,0,0,0.25); }
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar { display: none; }

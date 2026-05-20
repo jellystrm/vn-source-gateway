@@ -21,14 +21,19 @@ def _movie_fields(movie: MovieWanted) -> dict[str, object]:
 
 
 def _episode_fields(episode: EpisodeWanted) -> dict[str, object]:
+    s = episode.season_number
+    e = episode.episode_number
     return {
         "title": episode.series_title,
         "year": episode.year or "",
         "tmdb_id": episode.tmdb_id or "",
         "tvdb_id": episode.tvdb_id or "",
         "imdb_id": episode.imdb_id or "",
-        "season": episode.season_number,
-        "episode": episode.episode_number,
+        "season": s,
+        "episode": e,
+        # Zero-padded variants — use {season_padded}/{episode_padded} in templates
+        "season_padded": f"{s:02d}",
+        "episode_padded": f"{e:02d}",
     }
 
 

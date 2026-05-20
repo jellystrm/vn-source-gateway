@@ -82,7 +82,7 @@ class Settings:
     worker_enabled: bool = True
     movie_enabled: bool = True
     series_enabled: bool = True
-    source_order: list[str] = field(default_factory=list)
+    source_order: list[str] = field(default_factory=lambda: ["kkphim", "ophim", "nguonc"])
     default_output_mode: str = "strm"
     expose_both_modes: bool = False
     torznab_api_key: str = "vn-source"
@@ -143,7 +143,7 @@ class Settings:
             worker_enabled=_bool_value(file_data, "worker_enabled", "WORKER_ENABLED", True),
             movie_enabled=_bool_value(file_data, "movie_enabled", "MOVIE_ENABLED", True),
             series_enabled=_bool_value(file_data, "series_enabled", "SERIES_ENABLED", True),
-            source_order=_list_value(file_data, "source_order", "SOURCE_ORDER", []),
+            source_order=_list_value(file_data, "source_order", "SOURCE_ORDER", ["kkphim", "ophim", "nguonc"]),
             default_output_mode=str(_value(file_data, "default_output_mode", "DEFAULT_OUTPUT_MODE", "strm")),
             expose_both_modes=_bool_value(file_data, "expose_both_modes", "EXPOSE_BOTH_MODES", False),
             torznab_api_key=str(_value(file_data, "torznab_api_key", "TORZNAB_API_KEY", "vn-source")),

@@ -97,6 +97,8 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                 self._handle_tasks_bulk()
             elif path == "/api/manual-grab":
                 self._handle_manual_grab()
+            elif path == "/api/manual-grab-bulk":
+                self._handle_manual_grab_bulk()
             elif path == "/api/source-test":
                 self._handle_source_test()
             elif path == "/tasks/action":
@@ -340,6 +342,39 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                 enqueue_from_url(settings, grab_url)
             except Exception:
                 log.exception("manual-grab: enqueue failed for token=%r", token[:40])
+            accept = self.headers.get("Accept", "")
+            if "text/html" in accept:
+                self._redirect("/dashboard")
+            else:
+                self._send_text("Ok.\n")
+
+        def _handle_manual_grab_bulk(self) -> None:
+            """Queue multiple releases from a JSON array of grab tokens with a shared output_mode/container."""
+            form = self._read_form()
+            settings = Settings.load()
+            tokens_raw = form.get("tokens", "[]")
+            output_mode = form.get("output_mode", "strm")
+            container = form.get("container") or None
+            try:
+                tokens = json.loads(tokens_raw)
+            except Exception:
+                self.send_error(HTTPStatus.BAD_REQUEST, "Invalid tokens JSON")
+                return
+            if not isinstance(tokens, list):
+                self.send_error(HTTPStatus.BAD_REQUEST, "tokens must be a JSON array")
+                return
+            from dataclasses import replace as _replace
+            for token in tokens:
+                if not isinstance(token, str):
+                    continue
+                try:
+                    release = decode_release(token)
+                    new_release = _replace(release, output_mode=output_mode, container=container)  # type: ignore[arg-type]
+                    new_token = encode_release(new_release)
+                    grab_url = f"{settings.public_base_url}/grab/{new_token}"
+                    enqueue_from_url(settings, grab_url)
+                except Exception:
+                    log.exception("manual-grab-bulk: failed for token %r", token[:40])
             accept = self.headers.get("Accept", "")
             if "text/html" in accept:
                 self._redirect("/dashboard")

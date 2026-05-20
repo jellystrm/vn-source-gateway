@@ -62,8 +62,12 @@ class OutputService:
             return os.path.join(self.settings.movie_strm_root, folder, f"{stem}.strm")
 
         series = safe_filename(release.title)
-        season = release.season_number or 1
-        episode = release.episode_number or 1
+        season = release.season_number if release.season_number is not None else 1
+        if release.episode_number is None:
+            # Season pack — write a placeholder strm at the season level
+            stem = safe_filename(f"{release.title} - S{season:02d}")
+            return os.path.join(self.settings.series_strm_root, series, f"Season {season:02d}", f"{stem}.strm")
+        episode = release.episode_number
         stem = safe_filename(f"{release.title} - S{season:02d}E{episode:02d}")
         return os.path.join(self.settings.series_strm_root, series, f"Season {season:02d}", f"{stem}.strm")
 
@@ -100,8 +104,9 @@ class OutputService:
             series_title=release.title,
             episode_title="",
             year=release.year,
+            tmdb_id=release.tmdb_id,
             tvdb_id=release.tvdb_id,
             imdb_id=release.imdb_id,
-            season_number=release.season_number or 1,
-            episode_number=release.episode_number or 1,
+            season_number=release.season_number if release.season_number is not None else 1,
+            episode_number=release.episode_number if release.episode_number is not None else 1,
         )

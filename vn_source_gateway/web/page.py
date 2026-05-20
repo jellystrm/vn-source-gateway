@@ -4,7 +4,6 @@ import html
 import json
 
 from vn_source_gateway.infrastructure.config import Settings
-from vn_source_gateway.interfaces.download_clients import qbittorrent
 from .cards import (
     _attr,
     activity_log_card,
@@ -39,6 +38,23 @@ _DASHBOARD_POLL_JS = r"""
     });
   }
 
+  // Track open package IDs (tree view)
+  function openPkgIds() {
+    var ids = [];
+    document.querySelectorAll('#pipeline .jd-tree-arr').forEach(function (a) {
+      if (a.textContent.trim() === '▼') ids.push(a.id);
+    });
+    return ids;
+  }
+  function restorePkgIds(ids) {
+    ids.forEach(function (arrowId) {
+      var a = document.getElementById(arrowId);
+      if (a && a.textContent.trim() === '▶') {
+        window.jdTogglePkg(arrowId.slice(7)); // strip 'jd-arr-'
+      }
+    });
+  }
+
   function activeTab() {
     var a = document.querySelector('#pipeline .jd-tab.active');
     return a ? a.dataset.tab : 'downloads';
@@ -56,9 +72,20 @@ _DASHBOARD_POLL_JS = r"""
     });
   };
 
+  window.jdTogglePkg = function(id) {
+    var arrow = document.getElementById('jd-arr-' + id);
+    if (!arrow) return;
+    var opening = arrow.textContent.trim() === '▶';
+    arrow.textContent = opening ? '▼' : '▶';
+    document.querySelectorAll('.jd-c-' + id).forEach(function (r) {
+      r.style.display = opening ? '' : 'none';
+    });
+  };
+
   function refresh() {
     var open = openKeys();
     var tab = activeTab();
+    var pkgs = openPkgIds();
     fetch('/dashboard', {cache: 'no-store'})
       .then(function (r) { return r.text(); })
       .then(function (text) {
@@ -70,6 +97,7 @@ _DASHBOARD_POLL_JS = r"""
           oldCard.replaceWith(newCard);
           window.jdSwitchTab(tab);
           restoreOpen(open);
+          restorePkgIds(pkgs);
         }
       })
       .catch(function () {});
@@ -326,7 +354,7 @@ def _pipeline_card(settings: Settings) -> str:
 
 
 def _grab_btns(token_esc: str) -> str:
-    """Three tiny inline forms: STRM / MKV / MP4."""
+    """Three tiny inline forms: STRM / MKV / MP4 (single token)."""
     def btn(mode: str, container: str, label: str) -> str:
         cont_field = f"<input type='hidden' name='container' value='{container}'>" if mode == "download" else ""
         return (
@@ -340,8 +368,105 @@ def _grab_btns(token_esc: str) -> str:
     return btn("strm", "", "STRM") + btn("download", "mkv", "MKV") + btn("download", "mp4", "MP4")
 
 
+def _bulk_grab_btns(tokens: list[str]) -> str:
+    """Three tiny inline forms: STRM / MKV / MP4 (bulk — all tokens at once)."""
+    import json as _json
+    toks_esc = html.escape(_json.dumps(tokens), quote=True)
+
+    def btn(mode: str, container: str, label: str) -> str:
+        cont = f"<input type='hidden' name='container' value='{container}'>" if mode == "download" else ""
+        return (
+            f"<form method='post' action='/api/manual-grab-bulk' class='task-actions' style='display:inline;margin:0'>"
+            f"<input type='hidden' name='tokens' value='{toks_esc}'>"
+            f"<input type='hidden' name='output_mode' value='{mode}'>"
+            f"{cont}"
+            f"<button type='submit' class='jd-tb-btn' style='height:20px;font-size:10px'>{label}</button>"
+            f"</form>"
+        )
+    return btn("strm", "", "STRM") + btn("download", "mkv", "MKV") + btn("download", "mp4", "MP4")
+
+
+def _build_grab_tree(grabs: list[dict]) -> list[dict]:
+    """Decode + group grab tokens into package tree nodes for the tree-view UI.
+
+    Each node:
+      title       – display label for the package row
+      pkg_token   – base token (season pack if available)
+      ep_tokens   – list of episode tokens for bulk grab
+      children    – list of {title, token, r} for individual episodes
+      kind        – "movie" | "episode"
+    """
+    from vn_source_gateway.application.grab_service import decode_release
+
+    # Decode + deduplicate (prefer strm token as canonical per episode)
+    seen: dict[tuple, dict] = {}
+    for g in grabs:
+        tok = g.get("token", "")
+        title = g.get("title", "")
+        for suf in (" [STRM]", " [HLS-DL]"):
+            if title.endswith(suf):
+                title = title[:-len(suf)]
+                break
+        try:
+            r = decode_release(tok)
+        except Exception:
+            continue
+        key = (r.source_name, r.kind, r.season_number, r.episode_number)
+        existing = seen.get(key)
+        if not existing or r.output_mode == "strm":
+            seen[key] = {"title": title, "token": tok, "r": r}
+
+    decoded = list(seen.values())
+    pkg_map: dict[tuple, dict] = {}
+
+    # Pass 1: movies and season packs become package headers
+    for item in decoded:
+        r = item["r"]
+        if r.kind == "movie":
+            key = ("mv", r.source_name, r.title)
+            if key not in pkg_map:
+                pkg_map[key] = {
+                    "title": item["title"], "pkg_token": item["token"],
+                    "ep_tokens": [item["token"]], "children": [], "kind": "movie",
+                }
+        elif r.kind == "episode" and r.episode_number is None:
+            key = ("tv", r.source_name, r.season_number)
+            if key not in pkg_map:
+                pkg_map[key] = {
+                    "title": item["title"], "pkg_token": item["token"],
+                    "ep_tokens": [], "children": [], "kind": "episode",
+                }
+            else:
+                pkg_map[key]["title"] = item["title"]
+                pkg_map[key]["pkg_token"] = item["token"]
+
+    # Pass 2: individual episodes → attach to their package
+    for item in decoded:
+        r = item["r"]
+        if r.kind != "episode" or r.episode_number is None:
+            continue
+        key = ("tv", r.source_name, r.season_number)
+        if key not in pkg_map:
+            s = r.season_number
+            auto = (
+                f"{r.source_name or ''} S{s:02d}" if s is not None
+                else f"{r.source_name or ''} S??"
+            )
+            pkg_map[key] = {
+                "title": auto, "pkg_token": item["token"],
+                "ep_tokens": [], "children": [], "kind": "episode",
+            }
+        pkg_map[key]["ep_tokens"].append(item["token"])
+        pkg_map[key]["children"].append(item)
+
+    for pkg in pkg_map.values():
+        pkg["children"].sort(key=lambda x: (x["r"].episode_number or 0))
+
+    return list(pkg_map.values())
+
+
 def _indexer_card(settings: Settings) -> tuple[str, int, int, int]:
-    """LinkGrabber tab content.  Returns (html, pkg_count, link_count, error_count)."""
+    """LinkGrabber tab — tree view of packages.  Returns (html, pkg_count, link_count, error_count)."""
     from vn_source_gateway.infrastructure.activity import ActivityLog
     import time as _time
 
@@ -352,240 +477,305 @@ def _indexer_card(settings: Settings) -> tuple[str, int, int, int]:
     if not searches:
         return "<div class='jd-empty'>No indexer queries yet.</div>", 0, 0, 0
 
-    # Deduplicate by title (keep most-recent)
-    seen: dict[str, object] = {}
+    # Deduplicate by title (keep most-recent per show)
+    seen_ev: dict[str, object] = {}
     for ev in searches:
-        if ev.title not in seen:
-            seen[ev.title] = ev
-    deduped = list(seen.values())
+        if ev.title not in seen_ev:
+            seen_ev[ev.title] = ev
+    deduped = list(seen_ev.values())
 
-    total_links = sum(
-        len(getattr(ev, "grabs", []) or []) or (
-            int(ev.detail.split(" result")[0].split()[-1])
-            if " result" in ev.detail else 0
-        )
-        for ev in deduped
-    )
     error_count = sum(1 for ev in deduped if ev.status != "ok")
+    total_pkgs = 0
+    total_links = 0
+    rows: list[str] = []
+    pkg_counter = 0
 
-    rows = []
     for ev in deduped:
         age = _time_ago(max(0, now - ev.ts))
+        ev_grabs = getattr(ev, "grabs", []) or []
+        ev_url = getattr(ev, "url", "") or ""
+        dot_cls = "ok" if ev.status == "ok" else "err"
+
         if ": " in ev.title:
             kind_prefix, show_title = ev.title.split(": ", 1)
         else:
             kind_prefix, show_title = "", ev.title
-        dot_cls = "ok" if ev.status == "ok" else "err"
-        results_part = ev.detail.split(" — ")[0] if " — " in ev.detail else ev.detail
-        ev_grabs = getattr(ev, "grabs", []) or []
-        ev_url = getattr(ev, "url", "") or ""
-        link_btn = (
-            f" <a href='{html.escape(ev_url)}' target='_blank' "
-            f"style='font-size:10px;color:var(--accent)' title='Open XML'>↗</a>"
+
+        if not ev_grabs:
+            # No grabs stored — just show a summary row
+            detail = ev.detail.split(" — ")[0] if " — " in ev.detail else ev.detail
+            rows.append(
+                f"<tr style='background:rgba(0,0,0,0.06)'>"
+                f"<td style='font-size:11px;color:var(--text);padding:5px 8px' colspan='2'>"
+                f"{html.escape(show_title)} "
+                f"<span style='color:var(--muted)'>— {html.escape(detail)}</span></td>"
+                f"<td></td>"
+                f"<td style='font-size:11px;color:var(--muted);white-space:nowrap'>{html.escape(age)}</td>"
+                f"<td style='text-align:center'><span class='sdot {dot_cls}'></span></td>"
+                f"</tr>"
+            )
+            continue
+
+        packages = _build_grab_tree(ev_grabs)
+        if not packages:
+            continue
+
+        n_pkgs = len(packages)
+        n_links = sum(max(len(p["ep_tokens"]), 1) for p in packages)
+        total_pkgs += n_pkgs
+        total_links += n_links
+
+        xml_a = (
+            f" <a href='{html.escape(ev_url)}' target='_blank'"
+            f" style='font-size:10px;color:var(--accent)' title='Open XML'>↗</a>"
         ) if ev_url else ""
 
-        if ev_grabs:
-            shown = ev_grabs[:40]
-            overflow = len(ev_grabs) - len(shown)
-            grab_rows = ""
-            for g in shown:
-                tok = html.escape(g.get("token", ""), quote=True)
-                t = g.get("title", "")
-                for suf in (" [STRM]", " [HLS-DL]"):
-                    if t.endswith(suf):
-                        t = t[:-len(suf)]; break
-                grab_rows += (
-                    f"<div style='display:flex;align-items:center;gap:4px;padding:2px 0;"
-                    f"border-bottom:1px solid var(--border)'>"
-                    f"<span style='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;"
-                    f"white-space:nowrap;font-size:11px;color:var(--text)'>{html.escape(t)}</span>"
-                    f"<span style='display:flex;gap:2px;flex-shrink:0'>{_grab_btns(tok)}</span>"
-                    f"</div>"
-                )
-            if overflow > 0:
-                grab_rows += f"<div style='font-size:11px;color:var(--muted);padding:2px 0'>…and {overflow} more</div>"
-            xml_link = (
-                f"<div style='margin-top:4px'>"
-                f"<a href='{html.escape(ev_url)}' target='_blank' style='font-size:10px;color:var(--accent)'>↗ open XML</a>"
-                f"</div>"
-            ) if ev_url else ""
-            results_cell = (
-                f"<details class='pipe-detail'><summary>{html.escape(results_part)}</summary>"
-                f"<div style='margin-top:4px;padding:6px 10px;background:rgba(0,0,0,0.25);"
-                f"border-radius:5px;border:1px solid var(--border)'>"
-                f"{grab_rows}{xml_link}</div></details>"
-            )
-        else:
-            results_cell = (
-                f"<span style='color:var(--muted);font-size:11px'>{html.escape(results_part)}</span>"
-                f"{link_btn}"
-            )
-
+        # Search-event group header (darker background, no expand — just a label)
         rows.append(
-            f"<tr>"
-            f"<td style='white-space:nowrap;font-size:11px;color:var(--muted)'>{html.escape(show_title)}</td>"
-            f"<td style='white-space:nowrap;font-size:11px;color:var(--muted)'>{html.escape(kind_prefix)}</td>"
-            f"<td>{results_cell}</td>"
-            f"<td style='white-space:nowrap;font-size:11px;color:var(--muted)'>{html.escape(age)}</td>"
+            f"<tr style='background:rgba(0,0,0,0.14)'>"
+            f"<td style='font-size:11px;font-weight:600;color:var(--text);padding:5px 10px'>"
+            f"{html.escape(show_title)}{xml_a}</td>"
+            f"<td style='font-size:10px;color:var(--muted);white-space:nowrap'>"
+            f"{html.escape(kind_prefix)} &middot; {n_pkgs} pkg &middot; {n_links} links</td>"
+            f"<td></td>"
+            f"<td style='font-size:11px;color:var(--muted);white-space:nowrap'>{html.escape(age)}</td>"
             f"<td style='text-align:center'><span class='sdot {dot_cls}'></span></td>"
             f"</tr>"
         )
 
+        for pkg in packages:
+            pkg_id = f"lg{pkg_counter}"
+            pkg_counter += 1
+            children = pkg["children"]
+            ep_tokens = pkg["ep_tokens"] or [pkg["pkg_token"]]
+            has_ch = bool(children)
+            count_txt = f"{len(children)} ep" if children else ""
+            btns = _bulk_grab_btns(ep_tokens)
+
+            if has_ch:
+                arrow = (
+                    f"<span class='jd-tree-arr' id='jd-arr-{pkg_id}'"
+                    f" style='color:var(--muted)'>&#9658;</span>"
+                )
+                toggle = f"onclick='jdTogglePkg(\"{pkg_id}\")'"
+            else:
+                arrow = "<span style='display:inline-block;width:12px'></span>"
+                toggle = ""
+
+            rows.append(
+                f"<tr class='jd-pkg-row' {toggle}>"
+                f"<td style='padding:4px 8px 4px 20px'>"
+                f"<div style='display:flex;align-items:center;gap:6px'>"
+                f"{arrow}"
+                f"<span style='font-size:12px;font-weight:500'>{html.escape(pkg['title'])}</span>"
+                f"</div></td>"
+                f"<td style='font-size:10px;color:var(--muted);white-space:nowrap'>{count_txt}</td>"
+                f"<td style='white-space:nowrap'>{btns}</td>"
+                f"<td></td><td></td>"
+                f"</tr>"
+            )
+
+            for child in children:
+                r = child["r"]
+                ep_n = r.episode_number
+                ep_label = f"E{ep_n:02d}" if ep_n is not None else child["title"]
+                tok_esc = html.escape(child["token"], quote=True)
+                rows.append(
+                    f"<tr class='jd-child-r jd-c-{pkg_id}' style='display:none'>"
+                    f"<td style='padding:3px 8px 3px 42px;font-size:11px;color:var(--muted)'>"
+                    f"{html.escape(ep_label)}</td>"
+                    f"<td></td>"
+                    f"<td style='white-space:nowrap'>{_grab_btns(tok_esc)}</td>"
+                    f"<td></td><td></td>"
+                    f"</tr>"
+                )
+
+    if not rows:
+        return "<div class='jd-empty'>No indexer queries yet.</div>", 0, 0, 0
+
     body = (
         "<table class='jd-table'><thead><tr>"
-        "<th>Name</th><th>Type</th><th>Results</th><th>When</th><th></th>"
+        "<th style='padding-left:20px'>Name</th><th>Info</th><th>Actions</th><th>When</th><th></th>"
         "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
     )
-    return body, len(deduped), total_links, error_count
+    return body, total_pkgs, total_links, error_count
 
 
 def _download_card(settings: Settings) -> tuple[str, int, int, int]:
-    """Downloads tab content.  Returns (html, pkg_count, running_count, error_count)."""
-    from vn_source_gateway.infrastructure.activity import ActivityLog
+    """Downloads tab — tree view of packages.  Returns (html, pkg_count, running_count, error_count)."""
+    from vn_source_gateway.infrastructure.jobs import JobStore
     import time as _time
 
     now = int(_time.time())
+    store = JobStore(settings.state_path)
+    all_jobs = sorted(store.list_jobs(), key=lambda j: j.created_at, reverse=True)[:200]
 
-    try:
-        jobs = sorted(
-            qbittorrent.torrents_info(settings),
-            key=lambda x: x.get("added_on", 0), reverse=True,
-        )[:25]
-    except Exception:
-        jobs = []
+    if not all_jobs:
+        return "<div class='jd-empty'>No download tasks yet.</div>", 0, 0, 0
 
-    events = ActivityLog.get().recent(100)
-    events_by_ref: dict[str, list] = {}
-    for ev in events:
-        if ev.ref:
-            events_by_ref.setdefault(ev.ref, []).append(ev)
+    # Group into packages — key order preserved (newest-first since all_jobs is sorted desc)
+    pkg_order: list[tuple] = []
+    pkg_map: dict[tuple, dict] = {}
+
+    for job in all_jobs:
+        r = job.release
+        if r.kind == "movie":
+            year = f" ({r.year})" if r.year else ""
+            key: tuple = ("mv", r.title)
+            label = f"{r.title}{year}"
+        else:
+            s = r.season_number if r.season_number is not None else 0
+            key = ("tv", r.title, s)
+            label = f"{r.title} S{s:02d}"
+
+        if key not in pkg_map:
+            pkg_order.append(key)
+            pkg_map[key] = {"label": label, "kind": r.kind, "jobs": []}
+        pkg_map[key]["jobs"].append(job)
 
     running_count = 0
     error_count = 0
-    rows = []
+    rows: list[str] = []
 
-    for job in jobs:
-        state = str(job.get("state", ""))
-        progress = float(job.get("progress", 0))
-        task_hash = _attr(job.get("hash", ""))
-        job_id = str(job.get("hash", ""))
-        is_error = "error" in state.lower()
-        error_msg = str(job.get("error", "") or "")
-        save_path = str(job.get("save_path", "") or "")
-        path_display = save_path.split("/")[-1] if save_path else "—"
-        added_on = int(job.get("added_on", 0))
-        age = _time_ago(max(0, now - added_on)) if added_on else ""
+    for pi, key in enumerate(pkg_order):
+        pkg_id = f"dl{pi}"
+        pkg = pkg_map[key]
+        jobs = pkg["jobs"]
 
-        if is_error:
+        n_total = len(jobs)
+        n_done = sum(1 for j in jobs if j.status == "completed")
+        n_running = sum(1 for j in jobs if j.status == "running")
+        n_error = sum(1 for j in jobs if j.status == "error")
+        n_queued = sum(1 for j in jobs if j.status == "queued")
+        running_count += n_running
+        if n_error > 0:
             error_count += 1
-            stage = "error"
-        elif state in {"uploading", "pausedUP"}:
-            stage = "done"
-        elif state in {"downloading", "queuedDL"}:
-            running_count += 1
-            stage = "saving" if progress >= 0.35 else "matching"
-        elif state == "pausedDL":
-            stage = "paused"
+
+        if n_error > 0:
+            pkg_status = f"<span style='color:#e06c75'>{n_error} error{'s' if n_error > 1 else ''}</span>"
+        elif n_running > 0:
+            pct_done = int(n_done / n_total * 100) if n_total else 0
+            pkg_status = (
+                f"<span style='color:var(--green)'>{n_done}/{n_total}"
+                f"<span style='color:var(--muted)'> &middot; {n_running} running</span></span>"
+            )
+        elif n_queued > 0:
+            pkg_status = f"<span style='color:var(--muted)'>{n_done}/{n_total} &middot; {n_queued} queued</span>"
+        elif n_done == n_total:
+            pkg_status = f"<span style='color:var(--accent)'>&#10003; {n_done}/{n_total}</span>"
         else:
-            stage = "matching"
+            pkg_status = f"<span style='color:var(--muted)'>{n_done}/{n_total}</span>"
 
-        if stage == "done":
-            pct, bar_cls = 100, "done"
-            status_txt = "Done"
-            status_color = "var(--accent)"
-        elif is_error:
-            pct, bar_cls = max(5, int(progress * 100)), "fail"
-            status_txt = f"Error — {error_msg[:50]}" if error_msg else "Error"
-            status_color = "#e06c75"
-        elif stage == "paused":
-            pct, bar_cls = max(5, int(progress * 100)), "pulse"
-            status_txt = f"Paused {int(progress * 100)}%"
-            status_color = "var(--muted)"
-        elif stage == "saving":
-            pct, bar_cls = max(35, int(progress * 100)), "pulse"
-            status_txt = f"Saving {int(progress * 100)}%…"
-            status_color = "var(--green)"
-        elif stage == "matching":
-            pct, bar_cls = 15, "pulse"
-            status_txt = "Resolving…"
-            status_color = "var(--muted)"
+        has_ch = n_total > 1
+        toggle = f"onclick='jdTogglePkg(\"{pkg_id}\")'" if has_ch else ""
+        if has_ch:
+            arrow = (
+                f"<span class='jd-tree-arr' id='jd-arr-{pkg_id}'"
+                f" style='color:var(--muted)'>&#9658;</span>"
+            )
         else:
-            pct, bar_cls = 5, "pulse"
-            status_txt = "Queued"
-            status_color = "var(--muted)"
+            arrow = "<span style='display:inline-block;width:12px'></span>"
 
-        progress_cell = (
-            f"<div style='display:flex;flex-direction:column;gap:3px'>"
-            f"<div class='pbar' style='width:140px'>"
-            f"<div class='pbar-fill {bar_cls}' style='width:{pct}%'></div>"
-            f"<div class='pbar-txt'>{pct}%</div>"
-            f"</div></div>"
-        )
-
-        # Detail panel
-        job_events = events_by_ref.get(job_id, [])
-        grab_ev = next((e for e in job_events if e.kind == "grab"), None)
-        resolved_ev = next((e for e in job_events if e.kind == "job" and "Resolved" in e.detail), None)
-        done_ev = next((e for e in job_events if e.kind == "job" and "Done" in e.detail), None)
-
-        match_msg = (resolved_ev.detail if resolved_ev
-                     else (grab_ev.detail if grab_ev
-                           else ("resolving…" if stage == "matching" else "—")))
-        save_msg = (error_msg if is_error
-                    else (f"writing… {int(progress * 100)}%" if stage == "saving"
-                          else (done_ev.detail.replace("Done — ", "") if done_ev
-                                else (save_path if save_path else "—"))))
-        detail_html = _detail_panel([
-            ("🔍", "Search",   "grabbed from Radarr/Sonarr", "ok"),
-            ("⚙",  "Matching", match_msg, "ok" if (resolved_ev or grab_ev) else ""),
-            ("💾", "Saving",   save_msg,  "error" if is_error else ("ok" if done_ev or stage == "done" else "")),
-            ("✓",  "Done",     "completed" if stage == "done" else "", "ok" if stage == "done" else ""),
-        ], open_by_default=(is_error or stage not in {"done"}))
-
-        source = (grab_ev.detail if grab_ev
-                  else str(job.get("tags", "") or job.get("category", "") or "—"))
-
-        # Action buttons
-        btns = ""
-        if is_error:
-            btns += "<button type='submit' name='action' value='resume' class='jd-tb-btn'>Retry</button>"
-        elif state in {"downloading", "queuedDL"}:
-            btns += "<button type='submit' name='action' value='pause' class='jd-tb-btn'>Pause</button>"
-        elif state == "pausedDL":
-            btns += "<button type='submit' name='action' value='resume' class='jd-tb-btn'>Resume</button>"
-        btns += "<button type='submit' name='action' value='delete' class='jd-tb-btn' style='color:#e06c75;border-color:rgba(224,108,117,0.4)'>Delete</button>"
-
-        name_cell = (
-            f"<div style='font-weight:500;font-size:12px'>{html.escape(str(job.get('name', '')))}</div>"
-            + (f"<div style='font-size:10px;color:var(--muted);margin-top:1px'>{html.escape(age)}</div>" if age else "")
-            + detail_html
-        )
-
+        # Package row
         rows.append(
-            f"<tr>"
-            f"<td>{name_cell}</td>"
-            f"<td style='white-space:nowrap'>{progress_cell}</td>"
-            f"<td style='font-size:11px;color:{status_color};white-space:nowrap'>{html.escape(status_txt)}</td>"
-            f"<td style='font-size:11px;color:var(--muted)'>{html.escape(source)}</td>"
-            f"<td style='font-size:11px;color:var(--muted)' title='{_attr(save_path)}'>{html.escape(path_display)}</td>"
-            f"<td style='white-space:nowrap'>"
-            f"<form method='post' action='/tasks/action' class='task-actions' style='display:flex;gap:4px'>"
-            f"<input type='hidden' name='hashes' value='{task_hash}'>"
-            f"{btns}</form></td>"
+            f"<tr class='jd-pkg-row' {toggle}>"
+            f"<td style='padding:5px 10px'>"
+            f"<div style='display:flex;align-items:center;gap:6px'>"
+            f"{arrow}"
+            f"<span style='font-size:12px;font-weight:500'>{html.escape(pkg['label'])}</span>"
+            f"</div></td>"
+            f"<td colspan='4' style='font-size:11px;padding:5px 10px'>{pkg_status}</td>"
             f"</tr>"
         )
 
-    if not rows:
-        body = "<div class='jd-empty'>No download tasks yet.</div>"
-    else:
-        body = (
-            "<table class='jd-table'><thead><tr>"
-            "<th>Name</th><th>Progress</th><th>Status</th>"
-            "<th>Source</th><th>Save to</th><th>Actions</th>"
-            "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
-        )
+        # Sort children: season → episode → source
+        def _jkey(j: object) -> tuple:
+            rel = j.release  # type: ignore[attr-defined]
+            return (
+                rel.season_number if rel.season_number is not None else 0,
+                rel.episode_number if rel.episode_number is not None else 0,
+                rel.source_name or "",
+            )
 
-    return body, len(jobs), running_count, error_count
+        for job in sorted(jobs, key=_jkey):
+            r = job.release
+            if r.kind == "episode":
+                ep_n = r.episode_number
+                ep_label = f"E{ep_n:02d}" if ep_n is not None else "Season Pack"
+                if r.source_name:
+                    ep_label += f"  ·  {r.source_name}"
+            else:
+                ep_label = r.title
+
+            progress = job.progress or 0.0
+            status = job.status
+            is_err = status == "error"
+
+            if is_err:
+                pct = max(5, int(progress * 100))
+                bar_cls, status_txt = "fail", f"Error — {job.error[:40]}" if job.error else "Error"
+                status_color = "#e06c75"
+            elif status == "completed":
+                pct, bar_cls, status_txt = 100, "done", "Done"
+                status_color = "var(--accent)"
+            elif status == "running":
+                pct = max(5, int(progress * 100))
+                bar_cls, status_txt = "pulse", f"{pct}%"
+                status_color = "var(--green)"
+            elif status == "paused":
+                pct = max(5, int(progress * 100))
+                bar_cls, status_txt = "pulse", "Paused"
+                status_color = "var(--muted)"
+            else:
+                pct, bar_cls, status_txt = 5, "pulse", "Queued"
+                status_color = "var(--muted)"
+
+            pbar = (
+                f"<div class='pbar' style='width:100px'>"
+                f"<div class='pbar-fill {bar_cls}' style='width:{pct}%'></div>"
+                f"<div class='pbar-txt'>{pct}%</div>"
+                f"</div>"
+            )
+
+            task_hash = _attr(job.job_id)
+            btns = ""
+            if is_err:
+                btns += "<button type='submit' name='action' value='resume' class='jd-tb-btn'>Retry</button>"
+            elif status == "running":
+                btns += "<button type='submit' name='action' value='pause' class='jd-tb-btn'>Pause</button>"
+            elif status in {"paused", "queued"}:
+                btns += "<button type='submit' name='action' value='resume' class='jd-tb-btn'>Resume</button>"
+            btns += (
+                "<button type='submit' name='action' value='delete' class='jd-tb-btn'"
+                " style='color:#e06c75;border-color:rgba(224,108,117,0.4)'>&#10005;</button>"
+            )
+
+            save_path = job.save_path or ""
+            path_display = save_path.split("/")[-1] if save_path else "—"
+
+            rows.append(
+                f"<tr class='jd-child-r jd-c-{pkg_id}' style='display:none'>"
+                f"<td style='padding:3px 8px 3px 28px;font-size:11px;color:var(--muted)'>"
+                f"{html.escape(ep_label)}</td>"
+                f"<td style='padding:3px 8px'>{pbar}</td>"
+                f"<td style='font-size:11px;color:{status_color};white-space:nowrap'>"
+                f"{html.escape(status_txt)}</td>"
+                f"<td style='font-size:10px;color:var(--muted);white-space:nowrap'"
+                f" title='{_attr(save_path)}'>{html.escape(path_display)}</td>"
+                f"<td style='white-space:nowrap'>"
+                f"<form method='post' action='/tasks/action' class='task-actions' style='display:flex;gap:4px'>"
+                f"<input type='hidden' name='hashes' value='{task_hash}'>"
+                f"{btns}</form></td>"
+                f"</tr>"
+            )
+
+    body = (
+        "<table class='jd-table'><thead><tr>"
+        "<th style='padding-left:10px'>Package</th><th>Progress</th>"
+        "<th>Status</th><th>File</th><th>Actions</th>"
+        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+    )
+    return body, len(pkg_order), running_count, error_count
 
 
 def _pipeline_steps(stage: str, is_error: bool, progress: float) -> str:
