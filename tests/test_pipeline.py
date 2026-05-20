@@ -42,3 +42,22 @@ def test_test_grabber_adds_linkgrabber_activity(tmp_path, monkeypatch):
     assert events[0]["kind"] == "search"
     assert events[0]["title"] == "TV: One Piece"
     assert events[0]["grabs"]
+
+
+def test_test_indexer_returns_torznab_items(tmp_path, monkeypatch):
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.json"))
+    ActivityLog.init(str(tmp_path / "activity.json"))
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/test-indexer",
+        json={"media_type": "movie", "tmdb_id": 27205, "title": "Inception", "year": 2010},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["count"] > 0
+    assert body["key_required"] is True
+    assert "apikey=***" in body["url"]
+    assert any("Inception" in title for title in body["results"])

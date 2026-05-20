@@ -83,6 +83,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
             {{ testingGrabber ? 'Adding...' : 'Test Grabber' }}
           </button>
+          <button class="btn" :disabled="testingIndexer" @click="testTorznab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            {{ testingIndexer ? 'Testing...' : 'Test Indexer' }}
+          </button>
           <button class="btn primary" :disabled="resolving" @click="resolveSources">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             {{ resolving ? 'Resolving...' : 'Resolve sources' }}
@@ -113,7 +117,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, nextTick, onMounted, computed } from 'vue'
-import { getHealth, sourceTest, testGrabber, type HealthResult, type SourceTestRequest, type SourceResult } from '../api'
+import { getHealth, sourceTest, testGrabber, testIndexer, type HealthResult, type SourceTestRequest, type SourceResult } from '../api'
 
 interface Tile {
   name: string
@@ -151,10 +155,11 @@ const episode = ref('')
 
 const healthRunning = ref(false)
 const testingGrabber = ref(false)
+const testingIndexer = ref(false)
 const resolving = ref(false)
 const logLines = ref<LogLine[]>([])
 const lastRun = ref('')
-const outputMode = ref<'idle' | 'grabber' | 'resolve'>('idle')
+const outputMode = ref<'idle' | 'grabber' | 'indexer' | 'resolve'>('idle')
 const logEl = ref<HTMLElement | null>(null)
 
 const DEFAULTS = {
@@ -165,8 +170,9 @@ const DEFAULTS = {
 const defaults = computed(() => DEFAULTS[mediaType.value])
 const outputDescription = computed(() => {
   if (outputMode.value === 'grabber') return 'Test Grabber result and generated fake grab options.'
+  if (outputMode.value === 'indexer') return 'Torznab result that Radarr/Sonarr should receive from Deceptarr.'
   if (outputMode.value === 'resolve') return 'Resolve Sources result with source URLs and trace lines.'
-  return 'Run Test Grabber or Resolve sources to see the matching output here.'
+  return 'Run Test Grabber, Test Indexer, or Resolve sources to see the matching output here.'
 })
 
 const payload = computed<SourceTestRequest>(() => {
@@ -211,7 +217,7 @@ function clearLog() {
   outputMode.value = 'idle'
 }
 
-function beginOutput(mode: 'grabber' | 'resolve') {
+function beginOutput(mode: 'grabber' | 'indexer' | 'resolve') {
   outputMode.value = mode
   logLines.value = []
   lastRun.value = ''
@@ -283,6 +289,25 @@ async function fakeGrabber() {
     addLog('l-err', `Test Grabber failed: ${e}`)
   } finally {
     testingGrabber.value = false
+  }
+}
+
+async function testTorznab() {
+  testingIndexer.value = true
+  beginOutput('indexer')
+  addLog('l-info', `Testing Torznab indexer for ${describePayload()}...`)
+  try {
+    const res = await testIndexer(payload.value)
+    addLog(res.key_required ? 'l-info' : 'l-warn', 'Torznab API key check: configured key is used for this test')
+    addLog('l-info', `request: ${res.url}`)
+    addLog(res.count > 0 ? 'l-ok' : 'l-err', `Indexer returned ${res.count} result(s)`)
+    for (const item of res.results.slice(0, 10)) addLog('l-info', `item: ${item}`)
+    if (res.results.length > 10) addLog('l-info', `... ${res.results.length - 10} more`)
+    lastRun.value = 'just now'
+  } catch (e) {
+    addLog('l-err', `Test Indexer failed: ${e}`)
+  } finally {
+    testingIndexer.value = false
   }
 }
 

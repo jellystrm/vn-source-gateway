@@ -4,6 +4,8 @@ import asyncio
 import dataclasses
 import logging
 import time
+import xml.etree.ElementTree as ET
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -13,7 +15,7 @@ from backend.infrastructure.config import Settings, save_settings, _generate_tor
 from backend.infrastructure.jobs import JobStore
 from backend.api.forms import form_to_config
 from backend.application.grab_service import encode_release
-from backend.interfaces.indexers.torznab import build_releases, _release_display_title
+from backend.interfaces.indexers.torznab import build_releases, search_response, _release_display_title
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -156,6 +158,51 @@ async def test_grabber(request: Request) -> JSONResponse:
         grabs=result_grabs,
     )
     return JSONResponse({"status": "ok", "count": len(releases), "results": result_titles})
+
+
+@router.post("/api/test-indexer")
+async def test_indexer(request: Request) -> JSONResponse:
+    """Simulate a Radarr/Sonarr Torznab search using the configured API key."""
+    data = await request.json()
+    settings = Settings.load()
+
+    media_type = str(data.get("media_type", "movie"))
+    title = str(data.get("title") or "").strip()
+    tmdb_id = _int_or_none(data.get("tmdb_id"))
+    year = _int_or_none(data.get("year"))
+    season = _int_or_none(data.get("season"))
+    episode = _int_or_none(data.get("episode"))
+
+    query: dict[str, list[str]] = {
+        "apikey": [settings.torznab_api_key],
+        "t": ["tvsearch" if media_type == "tv" else "movie"],
+        "q": [title],
+        "cat": ["5000,5040" if media_type == "tv" else "2000,2040"],
+    }
+    if tmdb_id is not None:
+        query["tmdbid"] = [str(tmdb_id)]
+    if year is not None:
+        query["year"] = [str(year)]
+    if media_type == "tv":
+        query["season"] = [str(season or 1)]
+        query["ep"] = [str(episode or 1)]
+
+    xml = search_response(settings, query)
+    root = ET.fromstring(xml)
+    titles = [
+        (item.findtext("title") or "").strip()
+        for item in root.findall(".//item")
+        if (item.findtext("title") or "").strip()
+    ]
+    flat = {k: v[0] for k, v in query.items() if v and k != "apikey"}
+    url = f"{settings.public_base_url}/torznab/api?apikey=***&{urlencode(flat)}"
+    return JSONResponse({
+        "status": "ok" if titles else "error",
+        "count": len(titles),
+        "results": titles,
+        "url": url,
+        "key_required": bool(settings.torznab_api_key),
+    })
 
 
 @router.post("/api/settings")

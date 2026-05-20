@@ -136,6 +136,7 @@ export const getPipeline     = ()  => get<PipelineJob[]>('/api/pipeline')
 export const getActivity     = ()  => get<ActivityEvent[]>('/api/activity')
 export const sourceTest      = (p: SourceTestRequest) => post<Record<string, SourceResult>>('/api/source-test', p)
 export const testGrabber     = (p: SourceTestRequest) => post<{ status: string; count: number; results: string[] }>('/api/test-grabber', p)
+export const testIndexer     = (p: SourceTestRequest) => post<{ status: string; count: number; results: string[]; url: string; key_required: boolean }>('/api/test-indexer', p)
 export const torznabSearch   = (p: URLSearchParams)   => fetch('/torznab/api?' + p).then(r => r.text())
 export const saveSettings    = (data: Record<string, unknown>) => post<{ status: string }>('/api/settings', data)
 
