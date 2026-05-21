@@ -138,16 +138,14 @@
             <template v-for="season in group.seasons" :key="season.key">
               <!-- Season sub-header -->
               <div class="tree-row season" @click="toggleSeason(season.key)">
-                <span class="meta">
-                  <button class="icon-mini" @click.stop="toggleSeason(season.key)">
-                    <svg :class="['tree-chev', { open: !collapsedSeasons.has(season.key) }]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                  </button>
-                  {{ season.label }}
-                </span>
+                <span class="season-label">{{ season.label }}</span>
                 <span class="meta mono muted">{{ season.count }} ep</span>
                 <span style="flex:1"></span>
                 <span class="leaf-actions">
                   <button class="row-action danger" title="Remove season" @click.stop="removeJobs(season.jobIds)"><TrashIcon /></button>
+                  <button class="icon-mini" @click.stop="toggleSeason(season.key)">
+                    <svg :class="['tree-chev', { open: !collapsedSeasons.has(season.key) }]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
                 </span>
               </div>
 
@@ -419,12 +417,15 @@ const _groupsResult = computed(() => {
         list.push(job)
         episodeMap.set(episode, list)
       }
-      const episodes = [...episodeMap.entries()].sort(([a], [b]) => a - b).map(([episode, epJobs]) => {
+      // Skip season packs (episode === 0)
+      const episodes = [...episodeMap.entries()]
+        .filter(([episode]) => episode > 0)
+        .sort(([a], [b]) => a - b).map(([episode, epJobs]) => {
         const { kept, hidden } = deduplicateByMode(epJobs)
         hiddenJobs += hidden
         return {
           key: `${key}:s${season}:e${episode}`,
-          label: episode ? `E${String(episode).padStart(2, '0')}` : 'Season pack',
+          label: `E${String(episode).padStart(2, '0')}`,
           jobs: sortJobs(kept),
           status: aggregateStatus(kept),
           progress: Math.round((kept.reduce((sum, job) => sum + job.progress, 0) / Math.max(kept.length, 1)) * 100),
@@ -804,10 +805,7 @@ onUnmounted(() => clearInterval(timer))
   background: color-mix(in srgb, var(--surface-2) 80%, var(--border));
 }
 
-:global(.tree-row.season .meta) {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+:global(.tree-row.season .season-label) {
   font: 600 12px/1 var(--font-sans);
   color: var(--text);
 }
@@ -868,7 +866,7 @@ onUnmounted(() => clearInterval(timer))
   grid-template-columns: 52px 92px minmax(160px, .72fr) 110px 90px minmax(110px, 200px) 66px 76px;
   gap: 12px;
   align-items: center;
-  padding: 8px 18px;
+  padding: 8px 18px 8px 28px;
   border-bottom: 1px solid var(--border);
 }
 

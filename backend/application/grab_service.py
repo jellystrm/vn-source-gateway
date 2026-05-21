@@ -161,9 +161,12 @@ def _enrich_with_tmdb(settings: Settings, release: GatewayRelease) -> GatewayRel
 
 
 def _is_placeholder_title(title: str) -> bool:
-    """True when the title is a TMDB/TVDB ID placeholder rather than a real name."""
+    """True when the title is a generated placeholder rather than a real media name."""
     import re
-    return not title.strip() or bool(re.match(r"^(TMDB|TVDB|VN Source|Untitled)\s*\d*$", title.strip(), re.I))
+    return not title.strip() or bool(re.match(
+        r"^(TMDB|TVDB|VN Source|Untitled|Sonarr series|Radarr movie)\s*\d*$",
+        title.strip(), re.I,
+    ))
 
 
 def encode_release(release: GatewayRelease) -> str:
