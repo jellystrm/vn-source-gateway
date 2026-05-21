@@ -43,6 +43,8 @@ export interface PipelineJob {
   year?: number | null
   season: number | null
   episode: number | null
+  server_label?: string | null
+  query?: string | null
   output_mode: 'strm' | 'hls-dl'
   status: JobStatus
   progress: number

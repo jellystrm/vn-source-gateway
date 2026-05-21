@@ -205,6 +205,8 @@ def pipeline() -> JSONResponse:
             "year": job.release.year,
             "season": job.release.season_number,
             "episode": job.release.episode_number,
+            "server_label": getattr(job.release, "server_label", "") or "",
+            "query": getattr(job.release, "query", "") or "",
             "output_mode": job.release.output_mode,
             "status": display_status,
             "progress": job.progress,

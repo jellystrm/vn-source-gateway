@@ -96,68 +96,93 @@
         <!-- Package body -->
         <div class="pkg-body">
 
-          <!-- MOVIE -->
+          <!-- MOVIE: grouped by source -->
           <template v-if="group.kind === 'movie'">
-            <div class="dl-thead-srv movie-flat">
-              <span>Source</span><span>File</span><span>Output</span><span>Status</span><span>Progress</span><span>Action</span>
-            </div>
-            <div v-for="job in group.jobs" :key="job.id" class="dl-variant movie-flat">
-              <button class="source-btn" title="Show source raw JSON" @click="showSource(job)">{{ job.source || 'auto' }}</button>
-              <span class="var-file">{{ job.save_path || job.hls_url || job.title }}</span>
-              <span class="var-types">
-                <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
-              </span>
-              <span>
-                <span class="status-cell">
-                  <button
-                    :class="['pill', statusPill(job.status), { clickable: !!job.error }]"
-                    :title="job.error ? 'Show error' : job.status"
-                    @click="job.error && showError(job)"
-                  >{{ job.status }}</button>
-                </span>
-              </span>
-              <div class="var-prog pct-only">
-                {{ pct(job) }}%
+            <template v-for="sg in group.sourceGroups" :key="sg.source ?? '__auto__'">
+              <!-- Source sub-header (only shown when multiple sources) -->
+              <div v-if="group.sourceGroups.length > 1" class="source-group-head">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span>{{ sg.source || '—' }}</span>
               </div>
-              <span class="leaf-actions">
-                <button v-if="canPause(job)" class="row-action" title="Pause" @click="act('pause', job.id)"><PauseIcon /></button>
-                <button v-else-if="canResume(job)" class="row-action" title="Resume" @click="act('resume', job.id)"><PlayIcon /></button>
-                <button class="row-action danger" title="Remove" @click="removeJobs([job.id])"><TrashIcon /></button>
-              </span>
-            </div>
+              <div class="dl-thead-srv movie-flat">
+                <span>Source</span><span>File</span><span>Variant</span><span>Output</span><span>Status</span><span>Progress</span><span>Action</span>
+              </div>
+              <div v-for="job in sg.jobs" :key="job.id" class="dl-variant movie-flat">
+                <button class="source-btn" title="Show source raw JSON" @click="showSource(job)">{{ job.source || '—' }}</button>
+                <span class="var-file">{{ job.save_path || job.hls_url || job.title }}</span>
+                <span class="var-variant">{{ job.server_label || '—' }}</span>
+                <span class="var-types">
+                  <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
+                </span>
+                <span>
+                  <span class="status-cell">
+                    <button
+                      :class="['pill', statusPill(job.status), { clickable: !!job.error }]"
+                      :title="job.error ? 'Show error' : job.status"
+                      @click="job.error && showError(job)"
+                    >{{ job.status }}</button>
+                  </span>
+                </span>
+                <div class="var-prog pct-only">{{ pct(job) }}%</div>
+                <span class="leaf-actions">
+                  <button v-if="canPause(job)" class="row-action" title="Pause" @click="act('pause', job.id)"><PauseIcon /></button>
+                  <button v-else-if="canResume(job)" class="row-action" title="Resume" @click="act('resume', job.id)"><PlayIcon /></button>
+                  <button class="row-action danger" title="Remove" @click="removeJobs([job.id])"><TrashIcon /></button>
+                </span>
+              </div>
+            </template>
           </template>
 
-          <!-- TV -->
+          <!-- TV: grouped by season -->
           <template v-else>
-            <div class="dl-thead-tv">
-              <span>Season</span><span>Episode</span><span>Source</span><span>File</span><span>Output</span><span>Status</span><span>Progress</span><span>Action</span>
-            </div>
-            <div v-for="job in tvJobs(group)" :key="job.id" class="dl-variant tv-flat">
-              <span class="tv-meta">S{{ job.season || 1 }}</span>
-              <span class="tv-meta">{{ job.episode ? `E${job.episode}` : 'Pack' }}</span>
-              <button class="source-btn" title="Show source raw JSON" @click="showSource(job)">{{ job.source || 'auto' }}</button>
-              <span class="var-file">{{ job.save_path || job.hls_url || job.title }}</span>
-              <span class="var-types">
-                <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
-              </span>
-              <span>
-                <span class="status-cell">
-                  <button
-                    :class="['pill', statusPill(job.status), { clickable: !!job.error }]"
-                    :title="job.error ? 'Show error' : job.status"
-                    @click="job.error && showError(job)"
-                  >{{ job.status }}</button>
+            <template v-for="season in group.seasons" :key="season.key">
+              <!-- Season sub-header -->
+              <div class="tree-row season" @click="toggleSeason(season.key)">
+                <span class="meta">
+                  <button class="icon-mini" @click.stop="toggleSeason(season.key)">
+                    <svg :class="['tree-chev', { open: !collapsedSeasons.has(season.key) }]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  {{ season.label }}
                 </span>
-              </span>
-              <div class="var-prog pct-only">
-                {{ pct(job) }}%
+                <span class="meta mono muted">{{ season.count }} ep</span>
+                <span style="flex:1"></span>
+                <span class="leaf-actions">
+                  <button class="row-action danger" title="Remove season" @click.stop="removeJobs(season.jobIds)"><TrashIcon /></button>
+                </span>
               </div>
-              <span class="leaf-actions">
-                <button v-if="canPause(job)" class="row-action" title="Pause" @click="act('pause', job.id)"><PauseIcon /></button>
-                <button v-else-if="canResume(job)" class="row-action" title="Resume" @click="act('resume', job.id)"><PlayIcon /></button>
-                <button class="row-action danger" title="Remove" @click="removeJobs([job.id])"><TrashIcon /></button>
-              </span>
-            </div>
+
+              <template v-if="!collapsedSeasons.has(season.key)">
+                <div class="dl-thead-tv">
+                  <span>Episode</span><span>Source</span><span>File</span><span>Variant</span><span>Output</span><span>Status</span><span>Progress</span><span>Action</span>
+                </div>
+                <template v-for="ep in season.episodes" :key="ep.key">
+                  <div v-for="job in ep.jobs" :key="job.id" class="dl-variant tv-flat">
+                    <span class="tv-meta">{{ ep.label }}</span>
+                    <button class="source-btn" title="Show source raw JSON" @click="showSource(job)">{{ job.source || '—' }}</button>
+                    <span class="var-file">{{ job.save_path || job.hls_url || job.title }}</span>
+                    <span class="var-variant">{{ job.server_label || '—' }}</span>
+                    <span class="var-types">
+                      <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
+                    </span>
+                    <span>
+                      <span class="status-cell">
+                        <button
+                          :class="['pill', statusPill(job.status), { clickable: !!job.error }]"
+                          :title="job.error ? 'Show error' : job.status"
+                          @click="job.error && showError(job)"
+                        >{{ job.status }}</button>
+                      </span>
+                    </span>
+                    <div class="var-prog pct-only">{{ pct(job) }}%</div>
+                    <span class="leaf-actions">
+                      <button v-if="canPause(job)" class="row-action" title="Pause" @click="act('pause', job.id)"><PauseIcon /></button>
+                      <button v-else-if="canResume(job)" class="row-action" title="Resume" @click="act('resume', job.id)"><PlayIcon /></button>
+                      <button class="row-action danger" title="Remove" @click="removeJobs([job.id])"><TrashIcon /></button>
+                    </span>
+                  </div>
+                </template>
+              </template>
+            </template>
           </template>
 
           <!-- Footer -->
@@ -259,6 +284,11 @@ interface SeasonGroup {
   jobIds: string[]
 }
 
+interface MovieSourceGroup {
+  source: string | null
+  jobs: PipelineJob[]
+}
+
 interface DownloadGroup {
   key: string
   kind: 'movie' | 'tv'
@@ -270,6 +300,7 @@ interface DownloadGroup {
   count: number
   avgPct: number | null
   jobs: PipelineJob[]
+  sourceGroups: MovieSourceGroup[]
   seasons: SeasonGroup[]
   jobIds: string[]
 }
@@ -279,6 +310,7 @@ interface DownloadGroup {
 const jobs = ref<PipelineJob[]>([])
 const activeFilter = ref<'all' | 'running' | 'error'>('all')
 const collapsedPkgs = ref<Set<string>>(new Set())
+const collapsedSeasons = ref<Set<string>>(new Set())
 const modal = ref<{ title: string; subtitle: string; body: string } | null>(null)
 let timer: ReturnType<typeof setInterval>
 
@@ -321,7 +353,9 @@ const _groupsResult = computed(() => {
   let hiddenJobs = 0
   const map = new Map<string, PipelineJob[]>()
   for (const job of filteredJobs.value) {
-    const key = `${job.kind}:${job.title}`
+    // Use query as fallback for title to avoid "Sonarr series" placeholder grouping
+    const displayName = job.query || job.title
+    const key = `${job.kind}:${displayName}`
     const list = map.get(key) || []
     list.push(job)
     map.set(key, list)
@@ -330,10 +364,11 @@ const _groupsResult = computed(() => {
   const groups: DownloadGroup[] = [...map.entries()].map(([key, items]) => {
     const first = items[0]
     const kind = first.kind === 'movie' ? 'movie' : 'tv'
+    const displayTitle = first.query || first.title
     const group: DownloadGroup = {
       key,
       kind,
-      title: first.title,
+      title: displayTitle,
       mediaType: first.media_type || (kind === 'movie' ? 'movie' : 'tv'),
       tmdbId: first.tmdb_id || null,
       year: first.year || null,
@@ -341,16 +376,30 @@ const _groupsResult = computed(() => {
       count: items.length,
       avgPct: null,
       jobs: [],
+      sourceGroups: [],
       seasons: [],
       jobIds: items.map(j => j.id),
     }
 
     if (kind === 'movie') {
-      const { kept, hidden } = deduplicateByMode(items)
-      hiddenJobs += hidden
-      group.jobs = sortJobs(kept)
-      group.count = kept.length
-      group.avgPct = avgPct(kept)
+      // Group by source, dedup within each source by output_mode
+      const sourceMap = new Map<string | null, PipelineJob[]>()
+      for (const item of items) {
+        const src = item.source || null
+        const list = sourceMap.get(src) || []
+        list.push(item)
+        sourceMap.set(src, list)
+      }
+      let allKept: PipelineJob[] = []
+      group.sourceGroups = [...sourceMap.entries()].map(([source, srcJobs]) => {
+        const { kept, hidden } = deduplicateByMode(srcJobs)
+        hiddenJobs += hidden
+        allKept = allKept.concat(kept)
+        return { source, jobs: sortJobs(kept) }
+      })
+      group.jobs = allKept
+      group.count = allKept.length
+      group.avgPct = avgPct(allKept)
       return group
     }
 
@@ -375,7 +424,7 @@ const _groupsResult = computed(() => {
         hiddenJobs += hidden
         return {
           key: `${key}:s${season}:e${episode}`,
-          label: episode ? `Episode ${episode}` : 'Season pack',
+          label: episode ? `E${String(episode).padStart(2, '0')}` : 'Season pack',
           jobs: sortJobs(kept),
           status: aggregateStatus(kept),
           progress: Math.round((kept.reduce((sum, job) => sum + job.progress, 0) / Math.max(kept.length, 1)) * 100),
@@ -493,6 +542,12 @@ function togglePkg(key: string) {
   collapsedPkgs.value = s
 }
 
+function toggleSeason(key: string) {
+  const s = new Set(collapsedSeasons.value)
+  if (s.has(key)) s.delete(key); else s.add(key)
+  collapsedSeasons.value = s
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function sortJobs(items: PipelineJob[]) {
@@ -578,15 +633,6 @@ function groupJobs(group: DownloadGroup): PipelineJob[] {
   return group.seasons.flatMap(seasonJobs)
 }
 
-function tvJobs(group: DownloadGroup): PipelineJob[] {
-  return groupJobs(group).sort((a, b) => {
-    const seasonDiff = (a.season || 1) - (b.season || 1)
-    if (seasonDiff) return seasonDiff
-    const episodeDiff = (a.episode || 0) - (b.episode || 0)
-    if (episodeDiff) return episodeDiff
-    return a.output_mode.localeCompare(b.output_mode)
-  })
-}
 
 onMounted(() => { load(); timer = setInterval(load, 5000) })
 onUnmounted(() => clearInterval(timer))
@@ -693,6 +739,28 @@ onUnmounted(() => clearInterval(timer))
   font-size: 11.5px;
 }
 
+.var-variant {
+  font-size: 11.5px;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.source-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 18px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  color: var(--blue);
+  font: 700 11px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
 .tv-meta {
   color: var(--text-2);
   font-family: var(--font-mono);
@@ -721,9 +789,45 @@ onUnmounted(() => clearInterval(timer))
   height: 14px;
 }
 
-:global(.tree-row.season),
-:global(.tree-row.episode) {
-  padding-left: 18px;
+:global(.tree-row.season) {
+  padding: 8px 14px 8px 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+}
+
+:global(.tree-row.season:hover) {
+  background: color-mix(in srgb, var(--surface-2) 80%, var(--border));
+}
+
+:global(.tree-row.season .meta) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 12px/1 var(--font-sans);
+  color: var(--text);
+}
+
+:global(.tree-row.season .meta.mono.muted) {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+:global(.tree-chev) {
+  width: 14px;
+  height: 14px;
+  transition: transform .18s;
+  transform: rotate(-90deg);
+}
+
+:global(.tree-chev.open) {
+  transform: rotate(0deg);
 }
 
 :global(.dl-thead-srv),
@@ -737,8 +841,8 @@ onUnmounted(() => clearInterval(timer))
 :global(.dl-thead-srv.movie-flat),
 :global(.dl-variant.movie-flat) {
   display: grid;
-  grid-template-columns: 92px minmax(180px, .78fr) 90px minmax(130px, 220px) 78px 76px !important;
-  gap: 14px;
+  grid-template-columns: 92px minmax(160px, .72fr) 110px 90px minmax(110px, 200px) 66px 76px !important;
+  gap: 12px;
   align-items: center;
   padding: 8px 18px !important;
   border-bottom: 1px solid var(--border);
@@ -761,8 +865,8 @@ onUnmounted(() => clearInterval(timer))
 :global(.dl-thead-tv),
 :global(.dl-variant.tv-flat) {
   display: grid;
-  grid-template-columns: 70px 80px 92px minmax(180px, .78fr) 90px minmax(130px, 220px) 78px 76px;
-  gap: 14px;
+  grid-template-columns: 52px 92px minmax(160px, .72fr) 110px 90px minmax(110px, 200px) 66px 76px;
+  gap: 12px;
   align-items: center;
   padding: 8px 18px;
   border-bottom: 1px solid var(--border);
