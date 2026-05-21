@@ -907,7 +907,7 @@ async function save() {
 
 // ── Health check ─────────────────────────────────────────────────────────────
 interface HealthTile {
-  name: string; status: 'idle'|'loading'|'ok'|'warn'|'error'
+  name: string; status: 'idle'|'loading'|'ok'|'warn'|'error'|'unknown'
   dotClass: string; latency: number|null; message: string; url: string
 }
 const ALL_SERVICES = ['radarr','sonarr','jellyfin','kkphim','ophim','nguonc']
