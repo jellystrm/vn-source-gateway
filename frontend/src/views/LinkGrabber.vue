@@ -16,14 +16,14 @@
     <!-- Toolbar -->
     <div class="toolbar" style="margin-bottom:18px">
       <div class="group">
-        <button
+        <span
           v-for="f in filters" :key="f.key"
           :class="['filter-chip', { active: activeFilter === f.key }]"
           @click="activeFilter = f.key"
         >
           {{ f.label }}
           <span :class="['n', f.countClass]">{{ f.count }}</span>
-        </button>
+        </span>
       </div>
       <div class="divider"></div>
       <span class="spacer"></span>
@@ -66,9 +66,6 @@
       >
         <!-- Package head -->
         <div class="pkg-head" @click="togglePkg(group.key)">
-          <svg class="pkg-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
           <div :class="['pkg-mark', group.kind === 'movie' ? 'movie' : 'tv']">
             {{ group.kind === 'movie' ? 'M' : 'TV' }}
           </div>
@@ -86,10 +83,20 @@
             </template>
             <span v-else class="pill red">no match</span>
             <span class="time">{{ relTime(group.ts) }}</span>
-            <button class="icon-mini danger" title="Delete" @click.stop="deleteGroup(group)">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <button class="row-action danger" title="Delete" @click.stop="deleteGroup(group)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <button class="icon-mini" :title="collapsedPkgs.has(group.key) ? 'Expand' : 'Collapse'" @click.stop="togglePkg(group.key)">
+              <svg class="pkg-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
             </button>
           </div>
+        </div>
+
+        <!-- Color strip -->
+        <div :class="['pkg-bar', group.linkCount > 0 ? 'teal' : 'red']">
+          <span style="width:100%"></span>
         </div>
 
         <!-- Package body -->
@@ -98,21 +105,21 @@
         </div>
         <div v-else class="pkg-body">
 
-          <!-- MOVIE: thead + server rows directly -->
+          <!-- MOVIE -->
           <template v-if="group.kind === 'movie'">
-            <div class="lg-thead-srv flat-grid">
+            <div class="lg-thead lg-grid-movie">
               <span>Server</span><span>Variant</span><span>File</span><span>Download type</span><span>Status</span>
             </div>
-            <div v-for="row in groupVariantRows(group)" :key="row.variant.key" class="lg-variant flat-row flat-grid">
-              <span class="srv-name flat">{{ row.source }}</span>
+            <div v-for="row in groupVariantRows(group)" :key="row.variant.key" class="lg-row lg-grid-movie">
+              <button class="source-btn" title="View source" @click.stop>{{ row.source }}</button>
               <span class="var-dub">
                 {{ variantLabel(row) }}
                 <span v-if="row.primary" class="primary-dot" title="Primary"></span>
               </span>
               <span class="var-file">{{ variantFilename(group, row.variant) }}</span>
-              <span class="var-types">
-                <button class="btn sm" @click="grab(row.variant.strmToken, 'strm', row.variant.key)">STRM</button>
-                <button class="btn sm ghost" @click="grab(row.variant.downloadToken, 'download', row.variant.key)">HLS-DL</button>
+              <span class="grab-actions">
+                <button class="grab-btn strm" @click="grab(row.variant.strmToken, 'strm', row.variant.key)">STRM</button>
+                <button class="grab-btn hls" @click="grab(row.variant.downloadToken, 'download', row.variant.key)">HLS-DL</button>
               </span>
               <span><span class="pill green flat">ok</span></span>
             </div>
@@ -121,64 +128,60 @@
             </div>
           </template>
 
-          <!-- TV: season → episode → thead + server rows -->
+          <!-- TV: season → episode → rows -->
           <template v-else>
             <template v-for="season in group.seasons" :key="season.key">
               <template v-if="season.episodes.some(ep => episodeVariantRows(ep).length > 0)">
-              <div
-                class="tree-row season"
-                :class="{ collapsed: collapsedSrvs.has(season.key) }"
-                @click="toggleSrv(season.key)"
-              >
-                <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-                <span class="label">{{ season.label }}</span>
-                <div class="meta">
-                  <span>{{ season.episodes.reduce((n, ep) => n + episodeVariantRows(ep).length, 0) }} links</span>
+                <div
+                  class="tree-row season"
+                  :class="{ collapsed: collapsedSrvs.has(season.key) }"
+                  @click="toggleSrv(season.key)"
+                >
+                  <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                  <span class="label">{{ season.label }}</span>
+                  <div class="meta">
+                    <span>{{ season.episodes.reduce((n, ep) => n + episodeVariantRows(ep).length, 0) }} links</span>
+                  </div>
                 </div>
-              </div>
-              <div class="tree-children">
-                <template v-for="episode in season.episodes" :key="episode.key">
-                  <template v-if="episodeVariantRows(episode).length > 0">
-                  <div
-                    class="tree-row episode"
-                    :class="{ collapsed: collapsedSrvs.has(episode.key) }"
-                    @click="toggleSrv(episode.key)"
-                  >
-                    <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                    <span class="label">{{ episode.label }}</span>
-                    <div class="meta">
-                      <span>{{ episodeVariantRows(episode).length }} links</span>
-                    </div>
-                  </div>
-                  <div class="tree-children">
-                    <div class="lg-thead-srv flat-grid in-episode">
-                      <span>Server</span><span>Variant</span><span>File</span><span>Download type</span><span>Status</span>
-                    </div>
-                    <div
-                      v-for="row in episodeVariantRows(episode)"
-                      :key="row.variant.key"
-                      class="lg-variant flat-row flat-grid in-episode"
-                    >
-                      <span class="srv-name flat">{{ row.source }}</span>
-                      <span class="var-dub">
-                        {{ variantLabel(row) }}
-                        <span v-if="row.primary" class="primary-dot" title="Primary"></span>
-                      </span>
-                      <span class="var-file">{{ variantFilename(group, row.variant) }}</span>
-                      <span class="var-types">
-                        <button class="btn sm" @click="grab(row.variant.strmToken, 'strm', row.variant.key)">STRM</button>
-                        <button class="btn sm ghost" @click="grab(row.variant.downloadToken, 'download', row.variant.key)">HLS-DL</button>
-                      </span>
-                      <span><span class="pill green flat">ok</span></span>
-                    </div>
-                  </div>
+                <div class="tree-children">
+                  <template v-for="episode in season.episodes" :key="episode.key">
+                    <template v-if="episodeVariantRows(episode).length > 0">
+                      <div
+                        class="tree-row episode"
+                        :class="{ collapsed: collapsedSrvs.has(episode.key) }"
+                        @click="toggleSrv(episode.key)"
+                      >
+                        <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        <span class="label">{{ episode.label }}</span>
+                        <div class="meta">
+                          <span>{{ episodeVariantRows(episode).length }} links</span>
+                        </div>
+                      </div>
+                      <div class="tree-children">
+                        <div class="lg-thead lg-grid-movie in-episode">
+                          <span>Server</span><span>Variant</span><span>File</span><span>Download type</span><span>Status</span>
+                        </div>
+                        <div
+                          v-for="row in episodeVariantRows(episode)"
+                          :key="row.variant.key"
+                          class="lg-row lg-grid-movie in-episode"
+                        >
+                          <button class="source-btn" title="View source" @click.stop>{{ row.source }}</button>
+                          <span class="var-dub">
+                            {{ variantLabel(row) }}
+                            <span v-if="row.primary" class="primary-dot" title="Primary"></span>
+                          </span>
+                          <span class="var-file">{{ variantFilename(group, row.variant) }}</span>
+                          <span class="grab-actions">
+                            <button class="grab-btn strm" @click="grab(row.variant.strmToken, 'strm', row.variant.key)">STRM</button>
+                            <button class="grab-btn hls" @click="grab(row.variant.downloadToken, 'download', row.variant.key)">HLS-DL</button>
+                          </span>
+                          <span><span class="pill green flat">ok</span></span>
+                        </div>
+                      </div>
+                    </template>
                   </template>
-                </template>
-              </div>
+                </div>
               </template>
             </template>
             <div class="pkg-foot">
@@ -286,9 +289,6 @@ const deduplicatedEvents = computed(() => {
   for (const ev of [...filteredEvents.value].sort((a, b) => b.ts - a.ts)) {
     const first = ev.grabs[0]
     const kind = isTvEvent(ev, first) ? 'tv' : 'movie'
-    // Prefer TMDB ID as dedup key — resolves "Boys" / "Boys 2019" / "The Boys"
-    // (same tvdbid → same canonical tmdb_id) into a single entry.
-    // Fall back to normalised title for events without an ID.
     const tmdbId = ev.tmdb_id ?? first?.tmdb_id
     const key = tmdbId ? `${kind}:tmdb:${tmdbId}` : `${kind}:${mediaTitle(ev, first).toLowerCase().trim()}`
     if (!seen.has(key)) seen.set(key, ev)
@@ -341,7 +341,6 @@ function ungrabbedCount(group: MediaNode): number {
     sum + s.episodes.reduce((n, ep) => n + episodeVariantRows(ep).length, 0), 0)
 }
 
-// Groups that still have ungrabbed variants (or were no-match)
 const displayGroups = computed(() =>
   visibleGroups.value.filter(g => g.linkCount === 0 || ungrabbedCount(g) > 0)
 )
@@ -398,7 +397,6 @@ function toMediaNode(ev: ActivityEvent): MediaNode {
     return node
   }
 
-  // TV: group by season
   const seasonMap = new Map<number, GrabToken[]>()
   for (const g of ev.grabs) {
     const season = g.season || parseSeasonEpisode(g.title).season || 1
@@ -437,11 +435,7 @@ function toMediaNode(ev: ActivityEvent): MediaNode {
   return node
 }
 
-/**
- * Group grabs by source → server, merging strm + download tokens per (source, server) pair.
- */
 function toServerNodes(grabs: GrabToken[], baseKey: string): ServerNode[] {
-  // Map: source → Map<server, { strm, download }>
   const sourceMap = new Map<string, Map<string, { strm: string; download: string }>>()
 
   for (const g of grabs) {
@@ -471,11 +465,7 @@ function toServerNodes(grabs: GrabToken[], baseKey: string): ServerNode[] {
       strmToken: tokens.strm,
       downloadToken: tokens.download,
     }))
-    return {
-      key: `${baseKey}:src${si}`,
-      source,
-      variants,
-    }
+    return { key: `${baseKey}:src${si}`, source, variants }
   })
 }
 
@@ -544,13 +534,6 @@ function variantFilename(group: MediaNode, variant: Variant): string {
   return parts.join(' ')
 }
 
-function pillColor(status: string): string {
-  if (status === 'ok' || status === 'completed') return 'green'
-  if (status === 'error') return 'red'
-  if (status === 'pending') return 'amber'
-  return 'green'
-}
-
 function mediaTitle(ev: ActivityEvent, first?: GrabToken) {
   if (first?.media_title) return first.media_title
   return ev.title.replace(/^(Movie|TV):\s*/i, '') || first?.title || 'Unknown media'
@@ -585,15 +568,101 @@ onUnmounted(() => clearInterval(timer))
 </script>
 
 <style scoped>
+/* ── Table grid ── */
+.lg-grid-movie {
+  display: grid;
+  grid-template-columns: 100px 160px minmax(200px, 1fr) 140px 70px;
+  gap: 14px;
+  align-items: center;
+  padding: 0 18px;
+}
+.lg-grid-movie.in-episode {
+  padding-left: 36px;
+}
+
+.lg-thead {
+  padding-top: 8px; padding-bottom: 8px;
+  background: var(--bg-2);
+  color: var(--text-3); font-family: var(--font-mono);
+  font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+
+.lg-row {
+  min-height: 38px; padding-top: 6px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.lg-row:last-of-type { border-bottom: none; }
+
+/* ── Source button ── */
+.source-btn {
+  border: 0; background: transparent;
+  color: var(--blue); cursor: pointer;
+  font: 700 12px/1 var(--font-mono);
+  overflow: hidden; padding: 0; text-align: left;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.source-btn:hover { color: #9cc9ff; text-decoration: underline; }
+
+/* ── Variant / dub ── */
+.var-dub {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .primary-dot {
-  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-  background: var(--teal); flex-shrink: 0;
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  background: var(--teal);
   box-shadow: 0 0 0 2px rgba(94,224,189,.15), 0 0 5px rgba(94,224,189,.35);
 }
+
+/* ── File name ── */
+.var-file {
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── Grab action buttons ── */
+.grab-actions { display: flex; gap: 5px; align-items: center; }
+.grab-btn {
+  height: 24px; padding: 0 9px; border-radius: 5px; cursor: pointer;
+  font: 600 10.5px/1 var(--font-mono); letter-spacing: .04em;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.grab-btn.strm {
+  background: rgba(94,224,189,.12); color: var(--teal);
+  border: 1px solid rgba(94,224,189,.25);
+}
+.grab-btn.strm:hover { background: rgba(94,224,189,.22); border-color: var(--teal); }
+.grab-btn.hls {
+  background: rgba(245,166,35,.10); color: var(--accent, #f5a623);
+  border: 1px solid rgba(245,166,35,.25);
+}
+.grab-btn.hls:hover { background: rgba(245,166,35,.20); border-color: var(--accent, #f5a623); }
+
+/* ── Row action (delete button in pkg-head) ── */
+.row-action {
+  height: 28px; width: 30px; padding: 0; border-radius: 7px;
+  border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: border-color .12s, background .12s, color .12s;
+  flex-shrink: 0;
+}
+.row-action svg { width: 14px; height: 14px; flex-shrink: 0; }
+.row-action:hover { border-color: var(--blue-line); background: var(--blue-soft); color: #dbeafe; }
+.row-action.danger:hover { border-color: rgba(255,107,122,.45); background: rgba(255,107,122,.12); color: #ffd6dc; }
+
+/* ── Pkg color strip ── */
+:global(.pkg-bar.teal span) { background: var(--teal) !important; }
+:global(.pkg-bar.red   span) { background: var(--red)  !important; width: 100% !important; }
+
+/* ── No-match body ── */
 .pkg-nomatch {
   padding: 11px 18px;
   font-size: 12.5px; color: var(--text-3); font-family: var(--font-mono);
 }
+
+/* ── Pkg foot ── */
 .pkg-foot {
   padding: 10px 18px;
   font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3);
@@ -605,38 +674,21 @@ onUnmounted(() => clearInterval(timer))
   font-size: 12px; color: var(--text-3);
 }
 
-.srv-name.flat {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 600;
-  font-size: 12.5px;
-  color: var(--text);
+/* ── Filter chips (same as Downloads) ── */
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 7px;
+  background: transparent; border: 1px solid transparent; color: var(--text-2);
+  font: 500 13px/1 var(--font-sans); cursor: pointer; transition: all .12s; user-select: none;
 }
+.filter-chip:hover { background: var(--surface-2); color: var(--text); }
+.filter-chip.active { background: var(--surface-2); border-color: var(--border-2); color: var(--text); }
+.filter-chip .n { font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; color: var(--text-3); }
+.filter-chip .n.green { color: var(--green); }
+.filter-chip .n.red   { color: var(--red); }
 
-.flat-grid {
-  display: grid !important;
-  grid-template-columns: 140px 180px minmax(260px, 1fr) 140px 90px !important;
-  gap: 14px !important;
-  align-items: center !important;
-  padding-left: 18px !important;
-  padding-right: 18px !important;
-}
+/* ── Time badge ── */
+.time { font-size: 12px; color: var(--text-3); font-family: var(--font-mono); }
 
-.lg-thead-srv.flat-grid {
-  padding-top: 8px !important;
-  padding-bottom: 8px !important;
-}
-
-.lg-variant.flat-row {
-  min-height: 38px;
-  padding-top: 6px !important;
-  padding-bottom: 6px !important;
-}
-
-:global(.tree-row.season),
-:global(.tree-row.episode) {
-  padding-left: 18px;
-}
+/* ── Tree season/episode indent ── */
+:global(.tree-row.season), :global(.tree-row.episode) { padding-left: 18px; }
 </style>
