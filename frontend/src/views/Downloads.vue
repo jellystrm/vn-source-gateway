@@ -91,13 +91,15 @@
           <!-- MOVIE -->
           <template v-if="group.kind === 'movie'">
             <div class="dl-thead-srv">
-              <span>File</span><span>Type</span><span>Progress</span><span>Status</span>
+              <span>File</span><span>Output</span><span>Status</span><span>Progress</span><span>Action</span>
             </div>
             <div v-for="job in group.jobs" :key="job.id" class="dl-variant">
-              <span class="var-dub">{{ job.output_mode === 'strm' ? 'STRM' : 'HLS-DL' }}</span>
               <span class="var-file">{{ job.save_path || job.hls_url || job.title }}</span>
               <span class="var-types">
                 <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
+              </span>
+              <span>
+                <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
               </span>
               <div class="var-prog">
                 <div :class="['var-prog-bar', progBarColor(job.status)]">
@@ -108,9 +110,6 @@
                   <span :class="statusTextClass(job.status)">{{ statusText(job) }}</span>
                 </div>
               </div>
-              <span>
-                <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
-              </span>
               <span class="leaf-actions">
                 <button v-if="canResume(job)" class="icon-mini" title="Resume" @click="act('resume', job.id)">▶</button>
                 <button v-if="canPause(job)" class="icon-mini" title="Pause" @click="act('pause', job.id)">Ⅱ</button>
@@ -159,13 +158,15 @@
                   </div>
                   <div class="tree-children">
                     <div class="dl-thead-srv in-episode">
-                      <span>File</span><span>Type</span><span>Progress</span><span>Status</span>
+                      <span>File</span><span>Output</span><span>Status</span><span>Progress</span><span>Action</span>
                     </div>
                     <div v-for="job in episode.jobs" :key="job.id" class="dl-variant in-episode">
-                      <span class="var-dub">{{ job.output_mode === 'strm' ? 'STRM' : 'HLS-DL' }}</span>
                       <span class="var-file">{{ job.save_path || job.hls_url || job.title }}</span>
                       <span class="var-types">
                         <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
+                      </span>
+                      <span>
+                        <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
                       </span>
                       <div class="var-prog">
                         <div :class="['var-prog-bar', progBarColor(job.status)]">
@@ -176,9 +177,6 @@
                           <span :class="statusTextClass(job.status)">{{ statusText(job) }}</span>
                         </div>
                       </div>
-                      <span>
-                        <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
-                      </span>
                       <span class="leaf-actions">
                         <button v-if="canResume(job)" class="icon-mini" title="Resume" @click="act('resume', job.id)">▶</button>
                         <button v-if="canPause(job)" class="icon-mini" title="Pause" @click="act('pause', job.id)">Ⅱ</button>

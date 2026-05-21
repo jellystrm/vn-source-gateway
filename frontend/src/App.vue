@@ -949,7 +949,7 @@ body {
 /* ── Downloads: variant rows ── */
 .dl-thead-srv {
   display: grid;
-  grid-template-columns: 120px 1fr 120px 200px 100px;
+  grid-template-columns: 1fr 90px 120px 180px 76px;
   gap: 14px;
   padding: 8px 18px 8px 62px;
   background: var(--bg-2); border-bottom: 1px solid var(--border);
@@ -960,7 +960,7 @@ body {
 
 .dl-variant {
   display: grid;
-  grid-template-columns: 120px 1fr 120px 200px 100px auto;
+  grid-template-columns: 1fr 90px 120px 180px 76px;
   gap: 14px; align-items: center;
   padding: 8px 18px 8px 80px;
   min-height: 38px;
@@ -969,7 +969,6 @@ body {
 }
 .dl-variant:hover { background: rgba(255,255,255,.012); }
 .dl-variant.in-episode { padding-left: 132px; }
-.dl-variant .var-dub { font-weight: 600; font-size: 12.5px; color: var(--text); display: flex; align-items: center; gap: 8px; }
 .dl-variant .var-file { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dl-variant .var-types { display: flex; gap: 5px; align-items: center; }
 .dl-variant .var-prog { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
