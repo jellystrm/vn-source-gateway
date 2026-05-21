@@ -101,36 +101,21 @@
           <!-- MOVIE: thead + server rows directly -->
           <template v-if="group.kind === 'movie'">
             <div class="lg-thead-srv">
-              <span>Server</span><span>Download type</span><span>Status</span>
+              <span>Server</span><span>Variant</span><span>File</span><span>Download type</span><span>Status</span>
             </div>
-            <template v-for="srv in group.servers" :key="srv.key">
-              <div
-                class="tree-row server"
-                :class="{ collapsed: collapsedSrvs.has(srv.key) }"
-                @click="toggleSrv(srv.key)"
-              >
-                <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-                <span class="srv-name">{{ srv.source }} <span class="vcount">({{ srv.variants.length }} variant{{ srv.variants.length !== 1 ? 's' : '' }})</span></span>
-                <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-3)">{{ srvModes(srv) }}</span>
-                <span><span class="pill green flat">ok</span></span>
-              </div>
-              <div class="tree-children">
-                <div v-for="variant in srv.variants" :key="variant.key" class="lg-variant">
-                  <span class="var-dub">
-                    {{ variant.server || srv.source }}
-                    <span v-if="isPrimary(variant, srv)" class="pill teal flat">Primary</span>
-                  </span>
-                  <span class="var-file">{{ variantFilename(group, variant) }}</span>
-                  <span class="var-types">
-                    <button class="btn sm" @click="grab(variant.strmToken, 'strm')">STRM</button>
-                    <button class="btn sm ghost" @click="grab(variant.downloadToken, 'download')">HLS-DL</button>
-                  </span>
-                  <span><span class="pill green flat">ok</span></span>
-                </div>
-              </div>
-            </template>
+            <div v-for="row in groupVariantRows(group)" :key="row.variant.key" class="lg-variant flat-row">
+              <span class="srv-name flat">{{ row.source }}</span>
+              <span class="var-dub">
+                {{ variantLabel(row) }}
+                <span v-if="row.primary" class="pill teal flat">Primary</span>
+              </span>
+              <span class="var-file">{{ variantFilename(group, row.variant) }}</span>
+              <span class="var-types">
+                <button class="btn sm" @click="grab(row.variant.strmToken, 'strm')">STRM</button>
+                <button class="btn sm ghost" @click="grab(row.variant.downloadToken, 'download')">HLS-DL</button>
+              </span>
+              <span><span class="pill green flat">ok</span></span>
+            </div>
             <div class="pkg-foot">
               {{ group.linkCount }} result(s) — sources: {{ uniqueSources(group) }} · dubs: {{ uniqueDubs(group) }}
             </div>
@@ -169,36 +154,21 @@
                   </div>
                   <div class="tree-children">
                     <div class="lg-thead-srv in-episode">
-                      <span>Server</span><span>Download type</span><span>Status</span>
+                      <span>Server</span><span>Variant</span><span>File</span><span>Download type</span><span>Status</span>
                     </div>
-                    <template v-for="srv in episode.servers" :key="srv.key">
-                      <div
-                        class="tree-row server in-episode"
-                        :class="{ collapsed: collapsedSrvs.has(srv.key) }"
-                        @click.stop="toggleSrv(srv.key)"
-                      >
-                        <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <polyline points="6 9 12 15 18 9"/>
-                        </svg>
-                        <span class="srv-name">{{ srv.source }} <span class="vcount">({{ srv.variants.length }} variant{{ srv.variants.length !== 1 ? 's' : '' }})</span></span>
-                        <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-3)">{{ srvModes(srv) }}</span>
-                        <span><span class="pill green flat">ok</span></span>
-                      </div>
-                      <div class="tree-children">
-                        <div v-for="variant in srv.variants" :key="variant.key" class="lg-variant in-episode">
-                          <span class="var-dub">
-                            {{ variant.server || srv.source }}
-                            <span v-if="isPrimary(variant, srv)" class="pill teal flat">Primary</span>
-                          </span>
-                          <span class="var-file">{{ variantFilename(group, variant) }}</span>
-                          <span class="var-types">
-                            <button class="btn sm" @click="grab(variant.strmToken, 'strm')">STRM</button>
-                            <button class="btn sm ghost" @click="grab(variant.downloadToken, 'download')">HLS-DL</button>
-                          </span>
-                          <span><span class="pill green flat">ok</span></span>
-                        </div>
-                      </div>
-                    </template>
+                    <div v-for="row in episodeVariantRows(episode)" :key="row.variant.key" class="lg-variant flat-row in-episode">
+                      <span class="srv-name flat">{{ row.source }}</span>
+                      <span class="var-dub">
+                        {{ variantLabel(row) }}
+                        <span v-if="row.primary" class="pill teal flat">Primary</span>
+                      </span>
+                      <span class="var-file">{{ variantFilename(group, row.variant) }}</span>
+                      <span class="var-types">
+                        <button class="btn sm" @click="grab(row.variant.strmToken, 'strm')">STRM</button>
+                        <button class="btn sm ghost" @click="grab(row.variant.downloadToken, 'download')">HLS-DL</button>
+                      </span>
+                      <span><span class="pill green flat">ok</span></span>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -238,6 +208,12 @@ interface ServerNode {
   key: string
   source: string
   variants: Variant[]
+}
+
+interface VariantRow {
+  source: string
+  variant: Variant
+  primary: boolean
 }
 
 interface EpisodeNode {
@@ -511,15 +487,24 @@ function uniqueDubs(group: MediaNode): string {
   return [...new Set(all.filter(Boolean))].join(', ')
 }
 
-function srvModes(srv: ServerNode): string {
-  const modes: string[] = []
-  if (srv.variants.some(v => v.strmToken)) modes.push('STRM')
-  if (srv.variants.some(v => v.downloadToken)) modes.push('HLS-DL')
-  return modes.join(' · ')
+function groupVariantRows(group: MediaNode): VariantRow[] {
+  return group.servers.flatMap(serverVariantRows)
 }
 
-function isPrimary(variant: Variant, srv: ServerNode): boolean {
-  return srv.variants.indexOf(variant) === 0
+function episodeVariantRows(episode: EpisodeNode): VariantRow[] {
+  return episode.servers.flatMap(serverVariantRows)
+}
+
+function serverVariantRows(srv: ServerNode): VariantRow[] {
+  return srv.variants.map((variant, index) => ({
+    source: srv.source,
+    variant,
+    primary: index === 0,
+  }))
+}
+
+function variantLabel(row: VariantRow): string {
+  return row.variant.server || row.source
 }
 
 function variantFilename(group: MediaNode, variant: Variant): string {
@@ -582,5 +567,32 @@ onUnmounted(() => clearInterval(timer))
   display: flex; align-items: center; justify-content: space-between;
   padding: 9px 18px; border-top: 1px solid var(--border);
   font-size: 12px; color: var(--text-3);
+}
+
+.srv-name.flat {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+:global(.lg-thead-srv),
+:global(.lg-thead-srv.in-episode),
+:global(.lg-variant.flat-row),
+:global(.lg-variant.flat-row.in-episode) {
+  grid-template-columns: 140px 180px minmax(260px, 1fr) 140px 90px;
+  padding-left: 18px;
+}
+
+:global(.lg-variant.flat-row) {
+  min-height: 38px;
+}
+
+:global(.tree-row.season),
+:global(.tree-row.episode) {
+  padding-left: 18px;
 }
 </style>
