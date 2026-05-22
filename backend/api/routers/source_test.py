@@ -101,6 +101,8 @@ async def source_test(request: Request) -> Response:
         return Response(status_code=400, content="Invalid JSON")
 
     settings = Settings.load()
+    # Optional: restrict to a single source (used by "Test resolve" per-source button)
+    only_source: str | None = str(params["source_name"]) if params.get("source_name") else None
     tmdb_id_raw = params.get("tmdb_id")
     tmdb_id = int(tmdb_id_raw) if tmdb_id_raw else None
     media_type = str(params.get("media_type", "movie"))
@@ -159,6 +161,8 @@ async def source_test(request: Request) -> Response:
         test_log.append("TMDB API key not configured; add Title/Year manually")
 
     sources = build_sources(tmdb_api_key=settings.tmdb_api_key)
+    if only_source:
+        sources = {k: v for k, v in sources.items() if k == only_source}
     results: dict[str, dict] = {}
 
     if scan_mode:

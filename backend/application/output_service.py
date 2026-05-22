@@ -106,6 +106,7 @@ class OutputService:
             year=release.year,
             tmdb_id=release.tmdb_id,
             tvdb_id=release.tvdb_id,
+            tvdb_episode_id=None,
             imdb_id=release.imdb_id,
             season_number=release.season_number if release.season_number is not None else 1,
             episode_number=release.episode_number if release.episode_number is not None else 1,

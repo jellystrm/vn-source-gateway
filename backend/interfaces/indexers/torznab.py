@@ -91,7 +91,8 @@ def _available_sources(
                 wanted = EpisodeWanted(
                     sonarr_episode_id=0, series_id=0, series_title=title,
                     episode_title="", year=None,
-                    tmdb_id=tmdb_id, tvdb_id=tvdb_id, imdb_id=None,
+                    tmdb_id=tmdb_id, tvdb_id=tvdb_id, tvdb_episode_id=None,
+                    imdb_id=None,
                     season_number=check_season, episode_number=check_episode,
                 )
                 hits = source_obj.resolve_episode_all(wanted)  # type: ignore[arg-type]

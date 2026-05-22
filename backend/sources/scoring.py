@@ -93,9 +93,15 @@ def score_item(
     found_s = detect_season(item.get("name", ""), item.get("origin_name", ""), s_year, tmdb_info)
     if found_s and tmdb_info.total_seasons > 0 and found_s > tmdb_info.total_seasons:
         return -4600
+    # When Sonarr uses TVDB year-based season numbers (e.g. season=2026 for One Piece),
+    # the detected slug season (1) will never equal the year-based season.
+    # Skip the season penalty — episode resolution via TVMaze handles the mapping.
+    _year_based_season = requested_season is not None and requested_season > 1900
     if found_s is not None:
         if requested_season is None:
             score += 500
+        elif _year_based_season:
+            pass  # year-based season — don't bonus or penalise; let TVMaze resolve
         elif found_s == requested_season:
             score += 500
         else:

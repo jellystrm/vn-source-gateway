@@ -178,6 +178,17 @@ class Worker:
             )
             self.jobs.upsert(job)
             path = output.strm_path(job) if mode == "strm" else self.downloader.episode_path(wanted)
+            # For STRM mode, bypass filename-based DownloadedEpisodesScan (which
+            # fails when TMDB-numbered files don't match Sonarr's TVDB numbering).
+            # Use ManualImport with explicit episode ID so Sonarr marks the episode
+            # as "downloaded" (green). Falls back to unmonitored if ManualImport fails.
+            if mode == "strm" and episode.sonarr_episode_id:
+                ep_importer = lambda _path, _sid=episode.series_id, _eid=episode.sonarr_episode_id: \
+                    self.sonarr.import_episode_by_id(_path, _sid, _eid)
+            else:
+                ep_importer = lambda import_path: self.sonarr.import_path(
+                    import_path, self.settings.import_mode
+                )
             self._process_item(
                 key=job_id,
                 label=(
@@ -188,7 +199,7 @@ class Worker:
                 job=job,
                 output=output,
                 resolver=lambda source, item=wanted: source.resolve_episode(item),
-                importer=lambda import_path: self.sonarr.import_path(import_path, self.settings.import_mode),
+                importer=ep_importer,
             )
 
     def _prune_stale_jobs(self) -> None:

@@ -403,11 +403,17 @@ class PhimApiSource(Source):
         all_candidates = self._server_data(detail)
         unique_urls = {ep.get("link_m3u8") or ep.get("link_embed") for ep in all_candidates if ep.get("link_m3u8") or ep.get("link_embed")}
         self._trace(f"slug={slug!r}: {len(all_candidates)} episode row(s), {len(unique_urls)} unique URL(s)")
-        if tmdb_info.total_episodes > 0 and len(unique_urls) > tmdb_info.total_episodes * 1.5:
+        # Guard against wrong series matches — but count the *largest single server*,
+        # not the total across all servers.  Long-running series (e.g. One Piece) have
+        # multiple dub/sub servers each with ~1000+ eps; summing them would exceed any
+        # TMDB total and falsely skip the slug.
+        _episodes_data = detail.get("episodes") or (detail.get("data") or {}).get("episodes") or []
+        _max_server_eps = max((len(srv.get("server_data") or []) for srv in _episodes_data), default=len(unique_urls))
+        if tmdb_info.total_episodes > 0 and _max_server_eps > tmdb_info.total_episodes * 1.5:
             self._trace(
-                f"slug={slug!r}: skipped, too many URLs ({len(unique_urls)} vs TMDB total {tmdb_info.total_episodes})"
+                f"slug={slug!r}: skipped, too many URLs ({_max_server_eps} vs TMDB total {tmdb_info.total_episodes})"
             )
-            log.debug("%s slug %s has too many episodes (%s vs tmdb %s)", self.name, slug, len(unique_urls), tmdb_info.total_episodes)
+            log.debug("%s slug %s has too many episodes (%s vs tmdb %s)", self.name, slug, _max_server_eps, tmdb_info.total_episodes)
             return []
 
         movie_node = detail.get("movie") or {}
@@ -490,10 +496,15 @@ class PhimApiSource(Source):
                             if s_info_t and num > s_info_t.episode_count:
                                 rs = mapped_s
 
-                if rs is None and season > 1:
-                    continue
-                if rs is not None and rs != season:
-                    continue
+                # For TVDB year-based seasons (season > 1900, e.g. One Piece S2026),
+                # skip the season check and rely solely on _expected_abs for matching.
+                # Otherwise apply the normal season gate.
+                _year_based = season > 1900
+                if not _year_based:
+                    if rs is None and season > 1:
+                        continue
+                    if rs is not None and rs != season:
+                        continue
 
                 # ── episode number match ──────────────────────────────────────
                 # Try two candidates:
@@ -501,7 +512,12 @@ class PhimApiSource(Source):
                 # 2. num == _expected_abs    — PhimAPI uses absolute ep numbering
                 #    e.g. One Piece TVDB S2000E05 = absolute ep 13
                 #         PhimAPI stores "Tập 13" → num=13, _expected_abs=13 ✓
-                if num != episode and (_expected_abs is None or num != _expected_abs):
+                # For year-based seasons _expected_abs is required (episode alone
+                # would be 5 but the actual "Tập N" number is ~1160).
+                if _year_based:
+                    if _expected_abs is None or num != _expected_abs:
+                        continue
+                elif num != episode and (_expected_abs is None or num != _expected_abs):
                     continue
 
                 key = (url, rs, ename)
@@ -512,7 +528,7 @@ class PhimApiSource(Source):
                         self.name, url, {},
                         server_name=server_name,
                         item_name=ename,
-                        raw_data={"server": server, "item": item},
+                        raw_data={"server": server, "item": ep_data},
                     ))
 
         return hits

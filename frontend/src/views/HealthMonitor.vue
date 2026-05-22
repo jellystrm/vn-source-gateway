@@ -63,6 +63,10 @@
           Dry-run · nothing is queued or written to disk
         </span>
         <div style="margin-left:auto;display:flex;gap:8px">
+          <button v-if="resolving" class="btn ghost sm" @click="cancelResolve">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            Cancel
+          </button>
           <button class="btn sm" :disabled="resolving" @click="resolveSources">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             {{ resolving ? 'Resolving…' : 'Test all sources' }}
@@ -137,7 +141,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, onMounted } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { sourceTest, testIndexer, type SourceTestRequest, type SourceResult } from '../api'
 
 interface SrcTest {
@@ -168,6 +172,14 @@ const season        = ref('')
 const episode       = ref('')
 const testingIndexer = ref(false)
 const resolving      = ref(false)
+let   activeAbort:  AbortController | null = null
+
+function cancelResolve() {
+  activeAbort?.abort()
+  activeAbort = null
+}
+
+onUnmounted(() => { cancelResolve() })
 const logLines       = ref<LogLine[]>([])
 const logEl          = ref<HTMLElement | null>(null)
 
@@ -235,11 +247,13 @@ async function testTorznab() {
 }
 
 async function resolveSources() {
+  cancelResolve()
+  activeAbort = new AbortController()
   resolving.value = true
   addLog('l-info', `── Resolve sources · ${describePayload()} ──`)
   srcTests.forEach(s => { s.loading = true; s.resultText = '… resolving'; s.resultClass = '' })
   try {
-    const results = await sourceTest(payload.value)
+    const results = await sourceTest(payload.value, activeAbort.signal)
     for (const src of srcTests) {
       src.loading = false
       const result = results[src.name]
@@ -250,21 +264,30 @@ async function resolveSources() {
         src.resultText = '· no result'; src.resultClass = ''
       }
     }
-  } catch (e) {
-    addLog('l-err', `Resolve failed: ${e}`)
-    srcTests.forEach(s => { s.loading = false; s.resultText = '· failed'; s.resultClass = 'err' })
+  } catch (e: unknown) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      addLog('l-warn', 'Resolve cancelled')
+      srcTests.forEach(s => { s.loading = false; s.resultText = '· cancelled'; s.resultClass = '' })
+    } else {
+      addLog('l-err', `Resolve failed: ${e}`)
+      srcTests.forEach(s => { s.loading = false; s.resultText = '· failed'; s.resultClass = 'err' })
+    }
   } finally {
     resolving.value = false
+    activeAbort = null
   }
 }
 
 async function testSingleSource(name: string) {
   const src = srcTests.find(s => s.name === name)
   if (!src) return
+  cancelResolve()
+  activeAbort = new AbortController()
   src.loading = true; src.resultText = '… resolving'; src.resultClass = ''
   addLog('l-info', `── Resolve ${name} · ${describePayload()} ──`)
   try {
-    const results = await sourceTest(payload.value)
+    // Pass source_name so backend only runs this one source (faster, no wasted work)
+    const results = await sourceTest({ ...payload.value, source_name: name }, activeAbort.signal)
     src.loading = false
     const result = results[name]
     if (result) {
@@ -273,9 +296,16 @@ async function testSingleSource(name: string) {
     } else {
       src.resultText = '· no result'; src.resultClass = ''
     }
-  } catch (e) {
-    src.loading = false; src.resultText = '· failed'; src.resultClass = 'err'
-    addLog('l-err', `${name} → ${e}`)
+  } catch (e: unknown) {
+    src.loading = false
+    if (e instanceof Error && e.name === 'AbortError') {
+      src.resultText = '· cancelled'; src.resultClass = ''
+    } else {
+      src.resultText = '· failed'; src.resultClass = 'err'
+      addLog('l-err', `${name} → ${e}`)
+    }
+  } finally {
+    activeAbort = null
   }
 }
 
@@ -374,6 +404,7 @@ onMounted(() => {})
 }
 /* Log trace lines */
 :global(.testlog .l-trace) { color: var(--text-3); }
+:global(.testlog .l-warn)  { color: var(--amber); }
 @media (max-width: 720px) {
   .path-row { grid-template-columns: 1fr; }
 }

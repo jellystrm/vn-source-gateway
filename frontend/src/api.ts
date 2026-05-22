@@ -25,6 +25,7 @@ export interface SourceTestRequest {
   season?: number
   episode?: number
   tvdb_id?: number
+  source_name?: string   // optional: restrict test to a single source
 }
 
 // ─── Pipeline / Jobs ──────────────────────────────────────────────────────────
@@ -113,11 +114,12 @@ async function get<T>(path: string): Promise<T> {
   return r.json()
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+async function post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const r = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   })
   if (r.status === 401) throw new UnauthorizedError()
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
@@ -157,7 +159,7 @@ export const getConfig       = ()  => get<Config>('/api/config')
 export const getPipeline     = ()  => get<PipelineJob[]>('/api/pipeline')
 export const getActivity     = ()  => get<ActivityEvent[]>('/api/activity')
 export const deleteActivity  = (ts: number, title: string) => post<{ status: string; deleted: boolean }>('/api/activity/delete', { ts, title })
-export const sourceTest      = (p: SourceTestRequest) => post<Record<string, SourceResult>>('/api/source-test', p)
+export const sourceTest      = (p: SourceTestRequest, signal?: AbortSignal) => post<Record<string, SourceResult>>('/api/source-test', p, signal)
 export const testGrabber     = (p: SourceTestRequest) => post<{ status: string; count: number; results: string[] }>('/api/test-grabber', p)
 export const testIndexer     = (p: SourceTestRequest) => post<{ status: string; count: number; results: string[]; url: string; key_required: boolean }>('/api/test-indexer', p)
 export const torznabSearch   = (p: URLSearchParams)   => fetch('/torznab/api?' + p).then(r => r.text())

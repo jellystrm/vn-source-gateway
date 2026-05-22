@@ -58,6 +58,15 @@ class ArrClient:
         response.raise_for_status()
         return response.json()
 
+    def put(self, path: str, payload: dict[str, Any]) -> Any:
+        response = self.session.put(
+            f"{self.base_url}/api/v3/{path.lstrip('/')}",
+            json=payload,
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def command(self, payload: dict[str, Any]) -> Any:
         log.info("%s command: %s", self.name, payload)
         return self.post("command", payload)
@@ -123,3 +132,49 @@ class SonarrClient(ArrClient):
 
     def import_path(self, path: str, import_mode: str) -> None:
         self.command({"name": "DownloadedEpisodesScan", "path": path, "importMode": import_mode})
+
+    def import_episode_by_id(self, path: str, series_id: int, episode_id: int) -> None:
+        """Register a STRM file as 'downloaded' in Sonarr using explicit episode ID.
+
+        Uses ManualImport with episodeIds so Sonarr records the episode file and
+        shows the episode as downloaded (green), bypassing filename-based matching.
+        Falls back to set_episode_monitored(False) if ManualImport fails.
+        """
+        try:
+            self.command({
+                "name": "ManualImport",
+                "files": [{
+                    "path": path,
+                    "seriesId": series_id,
+                    "episodeIds": [episode_id],
+                    "quality": {
+                        "quality": {"id": 1, "name": "Unknown", "source": "unknown", "resolution": 0},
+                        "revision": {"version": 1, "real": 0, "isRepack": False},
+                    },
+                    "languages": [{"id": 1, "name": "English"}],
+                    "releaseGroup": "Deceptarr",
+                }],
+                "importMode": "hardLink",
+            })
+            log.info("Sonarr ManualImport episode %d path=%s", episode_id, path)
+        except Exception as exc:
+            log.warning("Sonarr ManualImport failed (%s) — falling back to unmonitored", exc)
+            self.set_episode_monitored(episode_id, False)
+
+    def set_episode_monitored(self, episode_id: int, monitored: bool) -> None:
+        """Mark a specific episode as monitored or unmonitored by its Sonarr ID.
+
+        Used after writing a STRM file — we've already delivered the content to
+        the library, so we flip the episode to unmonitored so Sonarr stops
+        requesting it.  This avoids relying on filename-based matching which
+        would fail when TMDB-numbered STRM files don't match Sonarr's TVDB
+        episode numbering.
+        """
+        try:
+            # Fetch current episode to preserve all required fields
+            ep = self.get(f"episode/{episode_id}")
+            ep["monitored"] = monitored
+            self.put(f"episode/{episode_id}", ep)
+            log.info("Sonarr episode %d set monitored=%s", episode_id, monitored)
+        except Exception as exc:
+            log.warning("Sonarr set_episode_monitored(%d) failed: %s", episode_id, exc)
