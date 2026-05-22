@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -93,15 +94,9 @@ def _resolve_ep_fresh(
     return hits, list(getattr(src, "_last_log", []))
 
 
-@router.post("/api/source-test")
-async def source_test(request: Request) -> Response:
-    try:
-        params = await request.json()
-    except Exception:
-        return Response(status_code=400, content="Invalid JSON")
-
+def _run_source_test(params: dict[str, Any]) -> dict[str, dict]:
+    """Blocking core of source-test — runs in a thread so the event loop stays free."""
     settings = Settings.load()
-    # Optional: restrict to a single source (used by "Test resolve" per-source button)
     only_source: str | None = str(params["source_name"]) if params.get("source_name") else None
     tmdb_id_raw = params.get("tmdb_id")
     tmdb_id = int(tmdb_id_raw) if tmdb_id_raw else None
@@ -130,8 +125,6 @@ async def source_test(request: Request) -> Response:
 
     if settings.tmdb_api_key:
         tmdb = TmdbClient(settings.tmdb_api_key)
-        # Auto-resolve TMDB ID from TVDB ID when only tvdb_id is provided
-        # (mirrors real Sonarr behaviour — Sonarr only sends tvdbid, not tmdbid)
         if not tmdb_id and tvdb_id and media_type == "tv":
             resolved = tmdb.tmdb_id_for_tvdb(tvdb_id)
             if resolved:
@@ -198,9 +191,6 @@ async def source_test(request: Request) -> Response:
                 for s, ep in sorted(ep_map)
             ]
             found = sum(1 for e in episodes_out if e["url"])
-
-            # Include the log from the first resolved episode (hit or miss)
-            # so the sandbox shows resolve trace, not just the plan summary.
             first_hit_key = next((k for k in sorted(ep_map) if ep_map[k]), None)
             first_miss_key = next((k for k in sorted(ep_map) if not ep_map[k]), None)
             sample_key = first_hit_key or first_miss_key
@@ -208,7 +198,6 @@ async def source_test(request: Request) -> Response:
             if sample_key:
                 s, e = sample_key
                 sample_ep_log = [f"── Sample: S{s:02d}E{e:02d} ──"] + sample_ep_log
-
             results[source_name] = {
                 "status": "ok" if found > 0 else "error",
                 "message": None if found > 0 else "Not found",
@@ -241,5 +230,19 @@ async def source_test(request: Request) -> Response:
             except Exception as exc:
                 source_log = test_log + list(getattr(source, "_last_log", [])) + [f"exception: {exc}"]
                 results[source_name] = {"status": "error", "message": str(exc)[:200], "log": source_log}
+
+    return results
+
+
+@router.post("/api/source-test")
+async def source_test(request: Request) -> Response:
+    try:
+        params = await request.json()
+    except Exception:
+        return Response(status_code=400, content="Invalid JSON")
+
+    # Run all blocking I/O (HTTP calls to sources, TMDB, TVMaze) in a thread
+    # so the uvicorn event loop stays free for other requests / tab navigation.
+    results = await asyncio.to_thread(_run_source_test, params)
 
     return JSONResponse(results)
